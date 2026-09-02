@@ -1,4 +1,5 @@
 from enum import IntEnum
+from uuid import uuid4
 
 class State(IntEnum):
     """State of the state machine."""
@@ -13,6 +14,7 @@ class State(IntEnum):
 class StateMachine:
     """State machine for the edge device."""
     def __init__(self):
+        self.scan_id = None
         self.state = State.IDLE
         self.cap_valid = False
         self.rec_valid = False
@@ -20,11 +22,13 @@ class StateMachine:
     def handle_weight_detected(self):
         """Handle weight detected event."""
         if self.state == State.IDLE:
+            self.scan_id = str(uuid4())
             self.state = State.STABILIZING
     def handle_stabilizing(self, weight_present: bool, weight_stable: bool):
         """Handle stabilizing event."""
         if self.state == State.STABILIZING:
             if not weight_present:
+                self.scan_id = None
                 self.state = State.IDLE
             elif weight_present and weight_stable:
                 self.state = State.CAPTURE
@@ -61,3 +65,4 @@ class StateMachine:
                 self.cap_valid = False
                 self.rec_valid = False
                 self.report_ack = False
+                self.scan_id = None
