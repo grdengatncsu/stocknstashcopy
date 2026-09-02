@@ -72,4 +72,26 @@ class StateMachine:
         if self.state != State.ERROR:
             self.error_source = self.state
             self.state = State.ERROR
-        
+    def handle_recovery(self, recovered: bool):
+        """Handle recovery event."""
+        if self.state == State.ERROR and self.error_source is not None and recovered:
+            source = self.error_source
+            if source in (State.IDLE, State.STABILIZING, State.RESET):
+                self.state = source
+            elif source == State.CAPTURE:
+                if self.cap_valid:
+                    self.state = State.RECOGNIZE
+                else:
+                    self.state = State.CAPTURE
+            elif source == State.RECOGNIZE:
+                if self.rec_valid:
+                    self.state = State.REPORT
+                else:
+                    self.state = State.RECOGNIZE
+            elif source == State.REPORT:
+                if self.report_ack:
+                    self.state = State.RESET
+                else:
+                    self.state = State.REPORT
+            self.error_source = None
+         
