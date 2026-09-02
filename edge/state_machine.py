@@ -14,6 +14,7 @@ class StateMachine:
     """State machine for the edge device."""
     def __init__(self):
         self.state = State.IDLE
+        self.cap_valid = False
 
     def handle_weight_detected(self):
         """Handle weight detected event."""
@@ -26,3 +27,9 @@ class StateMachine:
                 self.state = State.IDLE
             elif weight_present and weight_stable:
                 self.state = State.CAPTURE
+    def handle_capture(self, capture_complete: bool):
+        """Handle capture event."""
+        if self.state == State.CAPTURE:
+            if capture_complete:
+                self.cap_valid = True
+                self.state = State.RECOGNIZE
