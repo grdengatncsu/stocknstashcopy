@@ -19,6 +19,7 @@ class StateMachine:
         self.cap_valid = False
         self.rec_valid = False
         self.report_ack = False
+        self.error_source = None
     def handle_weight_detected(self):
         """Handle weight detected event."""
         if self.state == State.IDLE:
@@ -66,3 +67,9 @@ class StateMachine:
                 self.rec_valid = False
                 self.report_ack = False
                 self.scan_id = None
+    def handle_error(self):
+        """Handle error event."""
+        if self.state != State.ERROR:
+            self.error_source = self.state
+            self.state = State.ERROR
+        
