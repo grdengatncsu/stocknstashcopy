@@ -19,3 +19,10 @@ class StateMachine:
         """Handle weight detected event."""
         if self.state == State.IDLE:
             self.state = State.STABILIZING
+    def handle_stabilizing(self, weight_present: bool, weight_stable: bool):
+        """Handle stabilizing event."""
+        if self.state == State.STABILIZING:
+            if not weight_present:
+                self.state = State.IDLE
+            elif weight_present and weight_stable:
+                self.state = State.CAPTURE
