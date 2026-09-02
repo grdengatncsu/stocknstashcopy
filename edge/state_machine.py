@@ -53,3 +53,11 @@ class StateMachine:
             elif acknowledged:
                 self.report_ack = True
                 self.state = State.RESET
+    def handle_reset(self, platform_empty: bool):
+        """Handle reset event."""
+        if self.state == State.RESET:
+            if platform_empty:
+                self.state = State.IDLE
+                self.cap_valid = False
+                self.rec_valid = False
+                self.report_ack = False
