@@ -16,6 +16,7 @@ class StateMachine:
         self.state = State.IDLE
         self.cap_valid = False
         self.rec_valid = False
+        self.report_ack = False
     def handle_weight_detected(self):
         """Handle weight detected event."""
         if self.state == State.IDLE:
@@ -30,12 +31,25 @@ class StateMachine:
     def handle_capture(self, capture_complete: bool):
         """Handle capture event."""
         if self.state == State.CAPTURE:
-            if capture_complete:
+            if self.cap_valid:
+                self.state = State.RECOGNIZE
+            elif capture_complete:
                 self.cap_valid = True
                 self.state = State.RECOGNIZE
+
     def handle_recognize(self, recognition_complete: bool):
         """Handle recognize event."""
         if self.state == State.RECOGNIZE:
-            if recognition_complete:
+            if self.rec_valid:
+                self.state = State.REPORT
+            elif recognition_complete:
                 self.rec_valid = True
                 self.state = State.REPORT
+    def handle_report(self, acknowledged: bool):
+        """Handle report event."""
+        if self.state == State.REPORT:
+            if self.report_ack:
+                self.state = State.RESET
+            elif acknowledged:
+                self.report_ack = True
+                self.state = State.RESET
