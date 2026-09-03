@@ -2,9 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from sympy import capture
+
+from edge import cameras
 from edge.cameras.mock_camera import MockCamera
 from edge.cameras.three_camera_capture import ThreeCameraCapture
-
+from edge.state_machine import State, StateMachine
 
 class TestCameraCapture(unittest.TestCase):
     def setUp(self):
@@ -63,6 +66,30 @@ class TestCameraCapture(unittest.TestCase):
         for output_path in results.values():
             self.assertTrue(output_path.is_file())
 
+    def test_successful_capture_transitions_state_machine(self):
+        cameras = [
+            self.make_camera("camera_1"),
+            self.make_camera("camera_2"),
+            self.make_camera("camera_3"),
+        ]
+        capture = ThreeCameraCapture(cameras)
+
+        machine = StateMachine()
+        machine.handle_weight_detected()
+        machine.handle_stabilizing(weight_present=True, weight_stable=True)
+
+        original_scan_id = machine.scan_id
+
+        captured_images = capture.capture_all(scan_id=machine.scan_id, output_root=str(self.root / "captures"))
+
+        machine.handle_capture(capture_complete=len(captured_images) == 3)
+
+        self.assertEqual(machine.state, State.RECOGNIZE)
+        self.assertTrue(machine.cap_valid)
+        self.assertEqual(machine.scan_id, original_scan_id)
+
+        for image_path in captured_images.values():
+            self.assertEqual(image_path.parent.name, original_scan_id)
 
 if __name__ == "__main__":
     unittest.main()
