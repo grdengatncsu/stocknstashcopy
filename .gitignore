@@ -6,3 +6,6 @@ __pycache__/
 models/*.pt
 models/*.onnx
 datasets/
+# Local mock camera files
+mock_camera_inputs/
+mock_captures/
