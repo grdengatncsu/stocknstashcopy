@@ -135,15 +135,6 @@ Example output:
 }
 ```
 
-## Team Responsibilities
-
-- Embedded systems and Edge AI: Jaelynn
-- Electrical power and load sensing: Luke
-- Firmware, actuators, and communication: Justin
-- Mechanical design and camera fixture: Jackson
-- Dataset management: Maxime
-- Difficult packaging and test scenarios: Gavin
-
 ## Documentation
 
 Setup, camera configuration, model deployment, calibration, testing, and recovery procedures will be maintained in the `documentation` folder.
