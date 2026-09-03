@@ -2,12 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sympy import capture
-
-from edge import cameras
 from edge.cameras.mock_camera import MockCamera
 from edge.cameras.three_camera_capture import ThreeCameraCapture
 from edge.state_machine import State, StateMachine
+
 
 class TestCameraCapture(unittest.TestCase):
     def setUp(self):
@@ -17,14 +15,18 @@ class TestCameraCapture(unittest.TestCase):
 
     def make_camera(self, camera_id: str) -> MockCamera:
         image_path = self.root / f"{camera_id}.jpg"
-        image_path.write_bytes(f"image from {camera_id}".encode())
+        image_path.write_bytes(
+            f"image from {camera_id}".encode()
+        )
 
         return MockCamera(camera_id, image_path)
 
     def test_mock_camera_copies_saved_image(self):
         camera = self.make_camera("camera_1")
 
-        output_path = camera.capture_image(self.root / "output")
+        output_path = camera.capture_image(
+            self.root / "output"
+        )
 
         self.assertTrue(output_path.is_file())
         self.assertEqual(
@@ -76,20 +78,65 @@ class TestCameraCapture(unittest.TestCase):
 
         machine = StateMachine()
         machine.handle_weight_detected()
-        machine.handle_stabilizing(weight_present=True, weight_stable=True)
+        machine.handle_stabilizing(
+            weight_present=True,
+            weight_stable=True,
+        )
 
         original_scan_id = machine.scan_id
 
-        captured_images = capture.capture_all(scan_id=machine.scan_id, output_root=str(self.root / "captures"))
+        captured_images = capture.capture_all(
+            scan_id=machine.scan_id,
+            output_root=str(self.root / "captures"),
+        )
 
-        machine.handle_capture(capture_complete=len(captured_images) == 3)
+        machine.handle_capture(
+            capture_complete=len(captured_images) == 3
+        )
 
         self.assertEqual(machine.state, State.RECOGNIZE)
         self.assertTrue(machine.cap_valid)
         self.assertEqual(machine.scan_id, original_scan_id)
 
         for image_path in captured_images.values():
-            self.assertEqual(image_path.parent.name, original_scan_id)
+            self.assertEqual(
+                image_path.parent.name,
+                original_scan_id,
+            )
+
+    def test_failed_capture_sends_state_machine_to_error(self):
+        cameras = [
+            self.make_camera("camera_1"),
+            self.make_camera("camera_2"),
+            MockCamera(
+                "camera_3",
+                self.root / "missing_camera.jpg",
+            ),
+        ]
+        capture = ThreeCameraCapture(cameras)
+
+        machine = StateMachine()
+        machine.handle_weight_detected()
+        machine.handle_stabilizing(
+            weight_present=True,
+            weight_stable=True,
+        )
+
+        try:
+            capture.capture_all(
+                scan_id=machine.scan_id,
+                output_root=str(self.root / "captures"),
+            )
+        except (FileNotFoundError, OSError):
+            machine.handle_error()
+
+        self.assertEqual(machine.state, State.ERROR)
+        self.assertEqual(
+            machine.error_source,
+            State.CAPTURE,
+        )
+        self.assertFalse(machine.cap_valid)
+
 
 if __name__ == "__main__":
     unittest.main()
