@@ -3,9 +3,16 @@ __pycache__/
 *.pyc
 .DS_Store
 .ipynb_checkpoints/
+
+# Large model files
 models/*.pt
 models/*.onnx
+models/*.hef
+
+
+# Training and evaluation data
 datasets/
-# Local mock camera files
+
+# Local mock-camera files and generated captures
 mock_camera_inputs/
 mock_captures/

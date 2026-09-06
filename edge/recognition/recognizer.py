@@ -9,6 +9,7 @@ class RecognizedItem:
     confidence: float
     source_camera: str
     unknown: bool = False
+    bounding_box: tuple[float, float, float, float] | None = None  # (x, y, width, height)
 
 @dataclass
 class RecognitionReport:
