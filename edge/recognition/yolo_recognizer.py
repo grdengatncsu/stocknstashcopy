@@ -1,6 +1,9 @@
 from pathlib import Path
 from edge.recognition.recognizer import RecognitionReport, RecognizedItem
-from ultralytics import YOLO
+try:
+    from ultralytics import YOLO
+except ModuleNotFoundError:
+    YOLO = None
 from edge.positioning.coordinate_mapper import CoordinateMapper
 
 class YoloRecognizer:

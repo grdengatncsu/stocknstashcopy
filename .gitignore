@@ -15,4 +15,9 @@ datasets/
 
 # Local mock-camera files and generated captures
 mock_camera_inputs/
+
 mock_captures/
+mock_captures/
+
+# Generated runtime logs
+*.log
