@@ -9,7 +9,8 @@ class RecognizedItem:
     confidence: float
     source_camera: str
     unknown: bool = False
-    bounding_box: tuple[float, float, float, float] | None = None  # (x, y, width, height)
+    bounding_box: tuple[float, float, float, float] | None = None  # (xmin, y_min, x_max, y_max) in normalized coordinates
+    platform_position: tuple[float, float] | None = None  # (x, y) position on the platform in normalized coordinates
 
 @dataclass
 class RecognitionReport:

@@ -3,17 +3,20 @@ from edge.state_machine import StateMachine, State
 from edge.cameras.three_camera_capture import ThreeCameraCapture
 from edge.recognition.recognizer import Recognizer, RecognitionReport 
 from edge.reporting.reporter import Reporter
+from edge.association.associator import Associator, AssociationReport
 
 class ScanController:
     """Controls the scanning process by coordinating the state machine, camera capture, recognition, and reporting."""
-    def __init__(self, state_machine: StateMachine, capture: ThreeCameraCapture, recognizer: Recognizer, reporter: Reporter):
+    def __init__(self, state_machine: StateMachine, capture: ThreeCameraCapture, recognizer: Recognizer, reporter: Reporter, associator: Associator):
         self.state_machine = state_machine
         self.capture = capture
         self.recognizer = recognizer
         self.reporter = reporter 
+        self.associator = associator
 
         self.current_report: RecognitionReport | None = None
         self.captured_images: dict[str, Path] | None = None
+        self.current_association_report: AssociationReport | None = None
     def process_capture(self) -> None:
         """Capture three images and update the state machine."""
         if self.state_machine.state != State.CAPTURE:
@@ -47,23 +50,24 @@ class ScanController:
                 scan_id=scan_id,
                 captured_images=self.captured_images,
             )
+            self.current_association_report = self.associator.associate(self.current_report)
         except (OSError, ValueError):
             self.state_machine.handle_error()
             return
 
-        recognition_complete = self.current_report is not None
+        recognition_complete = self.current_association_report is not None
 
         self.state_machine.handle_recognize(
             recognition_complete=recognition_complete
         )
     def process_report(self) -> None:
-        """Report the recognition results and update the state machine."""
+        """Report the association results and update the state machine."""
         if self.state_machine.state != State.REPORT:
             raise RuntimeError("Cannot report when not in REPORT state.")
-        if self.current_report is None:
-            raise RuntimeError("No recognition report available for reporting.")
+        if self.current_association_report is None:
+            raise RuntimeError("No association report available for reporting.")
         try:
-            acknowledged = self.reporter.report(self.current_report)
+            acknowledged = self.reporter.report(self.current_association_report)
         except (OSError, ValueError):
             self.state_machine.handle_error()
             return
@@ -77,6 +81,7 @@ class ScanController:
         if self.state_machine.state == State.IDLE:
             self.current_report = None
             self.captured_images = None
+            self.current_association_report = None
     def process_current_state(self, weight_detected: bool = False, weight_present: bool = False, weight_stable: bool = False, platform_empty: bool = False, recovered: bool = False) -> None:
         """Process the current state of the state machine."""
         if self.state_machine.state == State.IDLE:

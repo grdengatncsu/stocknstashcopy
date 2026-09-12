@@ -145,6 +145,40 @@ class TestYoloRecognizer(unittest.TestCase):
             verbose=False,
         )
 
+    def test_coordinate_mapper_populates_platform_position(self):
+        self.mock_model.predict.side_effect = [
+            [
+                self.make_result(
+                    "apple",
+                    0.91,
+                    (0.10, 0.20, 0.70, 0.80),
+                )
+            ],
+            [self.make_empty_result()],
+            [self.make_empty_result()],
+        ]
+
+        coordinate_mapper = MagicMock()
+        coordinate_mapper.map_detection.return_value = (0.40, 0.60)
+
+        recognizer = YoloRecognizer(
+            "models/yolov8n.pt",
+            coordinate_mapper=coordinate_mapper,
+        )
+
+        report = recognizer.recognize(
+            scan_id="scan-123",
+            captured_images=self.captured_images,
+        )
+
+        coordinate_mapper.map_detection.assert_called_once_with(
+            "overhead",
+            (0.10, 0.20, 0.70, 0.80),
+        )
+        self.assertEqual(
+            report.items[0].platform_position,
+            (0.40, 0.60),
+        )
 
 if __name__ == "__main__":
     unittest.main()

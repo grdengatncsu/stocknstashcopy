@@ -1,15 +1,18 @@
 from pathlib import Path
 from edge.recognition.recognizer import RecognitionReport, RecognizedItem
 from ultralytics import YOLO
+from edge.positioning.coordinate_mapper import CoordinateMapper
+
 class YoloRecognizer:
     """Recognize multiple items in captured images using a YOLO model."""
     
-    def __init__(self, model_path: str, confidence_threshold: float = 0.25):
+    def __init__(self, model_path: str, confidence_threshold: float = 0.25, coordinate_mapper: CoordinateMapper | None = None):
         if not 0.0 <= confidence_threshold <= 1.0:
             raise ValueError("confidence_threshold must be between 0.0 and 1.0")
         self.model_path = model_path
         self.confidence_threshold = confidence_threshold
         self.model = YOLO(model_path)
+        self.coordinate_mapper = coordinate_mapper
 
     def recognize(self, scan_id: str, captured_images: dict[str, Path]) -> RecognitionReport:
         """Recognize items in the captured images and return a recognition report."""
@@ -39,12 +42,18 @@ class YoloRecognizer:
 
                 xmin, ymin, xmax, ymax = box.xyxyn[0].tolist()
 
+                bounding_box = (float(xmin), float(ymin), float(xmax), float(ymax))
+                platform_position = None
+                if self.coordinate_mapper is not None:
+                    platform_position = self.coordinate_mapper.map_detection(camera_id, bounding_box)
+
                 recognized_item = RecognizedItem(
                     name=name,
                     confidence=confidence,
                     source_camera=camera_id,
                     unknown=False,
-                    bounding_box=(float(xmin), float(ymin), float(xmax), float(ymax)),
+                    bounding_box=bounding_box,
+                    platform_position=platform_position
                 )
                 recognized_items.append(recognized_item)
 
