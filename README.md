@@ -8,11 +8,10 @@ Prototype 1 will demonstrate the following process:
 
 1. Detect groceries placed on the platform.
 2. Wait until the measured weight is stable.
-3. Turn on the platform lighting.
-4. Capture images from three cameras.
-5. Identify the grocery items.
-6. Send the results to the inventory application.
-7. Ask the user to confirm uncertain results.
+3. Capture images from three cameras under ambient lighting, with controlled lighting evaluated if needed.
+4. Identify the grocery items.
+5. Send the results to the inventory application.
+6. Ask the user to confirm uncertain results.
 
 ## Hardware
 
@@ -24,9 +23,11 @@ The current prototype hardware includes:
 - One overhead USB camera
 - Four load cells
 - NAU7802 load-cell ADC
-- Controlled LED lighting
+- Controlled lighting under evaluation for consistent image capture
 - Actuators and limit switches
 - Wi-Fi communication with the application
+
+Controlled lighting is not required for initial hardware bring-up, but remains an active design investigation and may be added if ambient lighting causes unreliable exposure or recognition.
 
 ## System Operating States
 
@@ -36,7 +37,6 @@ The embedded system follows this sequence:
 Idle
 → Weight Detected
 → Stable
-→ Illuminate
 → Capture
 → Recognize
 → Report
@@ -57,7 +57,7 @@ Images captured during the same scan will share a scan ID and timestamp.
 
 - Camera capture
 - Load-cell monitoring
-- Lighting control
+- Lighting evaluation/control if required
 - Scan state machine
 - Grocery detection and recognition
 - Barcode and OCR assistance
