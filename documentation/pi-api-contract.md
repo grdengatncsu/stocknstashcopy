@@ -1,27 +1,31 @@
-```md
 # Stock 'n Stash Pi API Contract
 
 ## Purpose
 
-This document defines the interface between the Stock 'n Stash Raspberry Pi software and the phone PWA.
+This document defines the local interface owned by the Stock 'n Stash Raspberry Pi and how that interface fits into the product's remote-access architecture.
 
-The Raspberry Pi owns:
+A core product use case is checking home inventory while grocery shopping. Therefore, the production-target architecture must not require the phone to be on the same network as the Raspberry Pi.
 
-- Inventory persistence
+The Raspberry Pi owns local edge responsibilities:
+
+- Local inventory persistence for device operation
 - Pending recognition results
 - Duplicate-scan protection
 - The local HTTP API
 - SQLite storage
+- Local operation when internet/cloud connectivity is unavailable
 
 The Python edge software performs hardware control, recognition, and multi-camera association, then reports completed scan results to the Pi backend.
 
-The PWA displays inventory and pending results and allows the user to confirm, correct, edit, or remove inventory records.
+For the production-target architecture, inventory changes are synchronized between the Pi and a cloud backend. The phone PWA uses the cloud-backed inventory service for remote access away from home. During local prototype/demo development, the PWA may still connect directly to the Pi API on the same network.
 
 The PWA does not access SQLite directly.
 
 ---
 
-## System Architecture
+## Product Architecture
+
+### Production target
 
 ```text
 Cameras / Load Cells / Hailo
@@ -29,17 +33,40 @@ Cameras / Load Cells / Hailo
             v
       Python Edge Software
             |
-            | HTTP / JSON
+            | local HTTP / JSON
             v
       Pi Inventory API
             |
             v
           SQLite
             |
-            | HTTP / JSON
+            | synchronized changes
             v
+     Cloud Inventory Service
+            ^
+            | Internet / JSON
+            |
           Phone PWA
 ```
+
+The Pi remains able to process scans and persist local state when internet access is unavailable. When connectivity returns, unsynchronized inventory changes are sent to the cloud.
+
+The phone does not need direct reachability to the Pi for normal remote inventory viewing while the user is away from home.
+
+### Prototype/local-demo path
+
+```text
+Phone PWA
+    |
+    | local Wi-Fi / HTTP
+    v
+Pi Inventory API
+    |
+    v
+  SQLite
+```
+
+This local path is useful for integration testing and live demonstrations. It is not the complete production access model.
 
 ---
 
@@ -159,7 +186,7 @@ Items with `requires_review: true` are stored as pending results until the user 
 
 ---
 
-# API Endpoints
+# Local Pi API Endpoints
 
 ## Submit Scan Result
 
@@ -225,6 +252,33 @@ Example response:
   ]
 }
 ```
+
+---
+
+## Add Inventory Item Manually
+
+```text
+POST /api/inventory
+```
+
+Manual inventory addition is supported as a fallback when an item cannot be recognized automatically.
+
+Example request:
+
+```json
+{
+  "name": "Pop-Tarts",
+  "upc": null,
+  "quantity": 1,
+  "expiration_date": null
+}
+```
+
+Behavior:
+
+- The backend generates the persistent inventory ID and timestamps.
+- The new item is stored in inventory.
+- In the production-target architecture, a manual addition made remotely through the phone is written to the cloud inventory service and synchronized back to the Pi.
 
 ---
 
@@ -365,17 +419,34 @@ The duplicate request should still receive a successful acknowledgment so the ed
 
 ---
 
-# Temporary Disconnection Behavior
+# Connectivity and Synchronization Behavior
 
-## PWA Cannot Reach the Pi
+## Pi loses internet/cloud connectivity
 
-The PWA should:
+The Pi should:
 
-- Display that the Pi is unavailable.
-- Not claim that an edit or correction was saved.
-- Allow the user to retry after reconnection.
+- Continue local recognition and inventory operations.
+- Persist changes in SQLite.
+- Retain unsynchronized changes for later cloud synchronization.
+- Resume synchronization when connectivity returns.
 
-## Edge Pipeline Cannot Reach the Backend
+## Phone is away from home
+
+The phone should:
+
+- Use the cloud inventory service over the internet.
+- Be able to list inventory without direct access to the Pi or home network.
+- Send manual additions, edits, removals, and pending-result decisions through the cloud-backed service when those capabilities are exposed remotely.
+
+## Local prototype/demo connection
+
+When the PWA is connected directly to the Pi:
+
+- Display when the Pi is unavailable.
+- Do not claim that an edit or correction was saved unless acknowledged.
+- Allow retry after reconnection.
+
+## Edge pipeline cannot reach the Pi backend
 
 The Python edge software should:
 
@@ -384,7 +455,7 @@ The Python edge software should:
 - Allow the report operation to be retried.
 - Avoid repeating successful capture or recognition steps.
 
-Because the backend stores processed `scan_id` values, a retry must not create duplicate inventory.
+Because the Pi backend stores processed `scan_id` values, a retry must not create duplicate inventory.
 
 ---
 
@@ -393,9 +464,28 @@ Because the backend stores processed `scan_id` values, a retry must not create d
 | Component | Responsibility |
 |---|---|
 | Python edge software | Hardware control, detection, recognition, association, scan reporting |
-| Pi backend | HTTP API, inventory logic, pending results, duplicate-scan protection |
-| SQLite | Persistent storage |
-| Phone PWA | Inventory display, pending-result review, user edits |
+| Pi backend | Local HTTP API, local inventory logic, pending results, duplicate-scan protection, local persistence |
+| SQLite | Local operational storage and offline resilience |
+| Cloud inventory service | Remotely accessible synchronized inventory/account state |
+| Cloud sync component | Transfers acknowledged changes between Pi local state and cloud state, retries after outages, applies conflict rules |
+| Phone PWA | Inventory display, remote inventory access, manual additions, pending-result review, user edits |
+
+The phone does not own the authoritative inventory database and does not write directly to SQLite.
+
+---
+
+# Cloud Sync Requirements
+
+The exact cloud provider and synchronization protocol are intentionally separate from the local Pi API implementation, but the product architecture requires:
+
+- Remote inventory reads while the user is away from home.
+- Pi-to-cloud synchronization of device-generated inventory changes.
+- Cloud-to-Pi synchronization of remote user edits and manual additions.
+- Retry after temporary internet outages.
+- A defined conflict-resolution strategy.
+- Authentication/authorization before exposing a user's inventory remotely.
+
+The Pi should not be exposed directly to the public internet as the normal remote-access mechanism.
 
 ---
 
@@ -405,8 +495,19 @@ Because the backend stores processed `scan_id` values, a retry must not create d
 - Should scanning the same UPC automatically increase the existing inventory quantity?
 - How should products without UPCs be matched against existing inventory?
 - Should recognition evidence be retained after an uncertain item is confirmed?
-- Should manual inventory additions be supported by the PWA?
+- Which cloud provider/service should host synchronized inventory for the prototype and production target?
+- What is the minimum authentication model required for the prototype?
+- What conflict-resolution rule should apply if the Pi and phone change the same inventory item while disconnected?
 - Should product-database metadata be stored in the same SQLite database or a separate cache?
+
+---
+
+# Resolved Design Decisions
+
+- Manual inventory additions are supported as a fallback for items that cannot be recognized.
+- The production-target phone experience must support inventory access away from the home network.
+- The Pi remains the local edge backend and offline-capable persistence layer.
+- Remote phone access uses a cloud-backed synchronized inventory service rather than requiring direct public access to the Pi.
 
 ---
 
@@ -415,10 +516,11 @@ Because the backend stores processed `scan_id` values, a retry must not create d
 - [ ] Inventory-item fields are agreed on.
 - [ ] Pending-result fields are agreed on.
 - [ ] Scan-report format is agreed on.
-- [ ] Inventory API operations are agreed on.
+- [ ] Local inventory API operations are agreed on.
+- [ ] Manual-add behavior is agreed on.
 - [ ] Pending-result confirmation behavior is agreed on.
 - [ ] Error responses are documented.
-- [ ] Temporary-disconnection behavior is documented.
+- [ ] Local disconnection behavior is documented.
+- [ ] Remote/cloud synchronization responsibilities are documented.
 - [ ] Edge/API owner reviewed the contract.
 - [ ] PWA contributor reviewed the contract.
-```
