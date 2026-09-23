@@ -9,6 +9,10 @@
 - Kernel: `6.18.39+rpt-rpi-2712`
 - Python: `3.13.5`
 
+The Go backend module currently declares Go `1.27.1` in `server/go.mod`.
+Backend execution on the CM5 has not yet been recorded as verified in this
+document.
+
 ## Remote Access
 
 The CM5 is reachable from Jaelynn's Mac over SSH:
@@ -44,6 +48,46 @@ source .venv/bin/activate
 
 Desktop Ultralytics and PyTorch packages are not installed on the CM5. The deployed recognition pipeline will use the Hailo accelerator.
 
+## Go Backend
+
+Verify the installed Go toolchain before running the backend:
+
+```bash
+go version
+```
+
+The reported toolchain must satisfy the version declared in `server/go.mod`.
+From the repository root, download dependencies and run the tests:
+
+```bash
+cd server
+go mod download
+go test ./...
+```
+
+Start the backend from the `server` directory:
+
+```bash
+go run .
+```
+
+The server listens on port `8080`. From the CM5 itself, its status endpoint is:
+
+```text
+http://localhost:8080/api/status
+```
+
+Because the database path is relative to the process working directory,
+starting the backend from `server/` creates or opens:
+
+```text
+/home/stocknstash/Projects/stock-n-stash/server/stocknstash.db
+```
+
+The schema is initialized automatically. The current server has no
+authentication or TLS and should not be exposed directly to the public
+internet.
+
 ## Installed Hardware Support
 
 - HailoRT CLI `4.23.0`
@@ -70,6 +114,26 @@ The full Python test suite passes on the CM5:
 
 ```bash
 python -m unittest discover -s tests -v
+```
+
+After Go is installed or confirmed, record CM5 backend verification by running:
+
+```bash
+cd /home/stocknstash/Projects/stock-n-stash/server
+go test ./...
+go run .
+```
+
+In a second SSH session, verify the live process:
+
+```bash
+curl -i http://localhost:8080/api/status
+```
+
+The expected body is:
+
+```json
+{"status":"ok"}
 ```
 
 Physical camera configuration, load-cell calibration, and final port assignments are handled separately during hardware bring-up.

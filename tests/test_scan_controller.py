@@ -1,3 +1,5 @@
+"""Unit tests for coordination between scan stages and injected components."""
+
 import tempfile
 import unittest
 from pathlib import Path

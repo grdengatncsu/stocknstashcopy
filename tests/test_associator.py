@@ -1,3 +1,5 @@
+"""Behavior tests for grouping multi-camera observations into physical items."""
+
 import unittest
 
 from edge.association.associator import AssociationReport

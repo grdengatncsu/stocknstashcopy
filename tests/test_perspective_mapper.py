@@ -1,3 +1,5 @@
+"""Tests for mapping camera bounding boxes into normalized platform positions."""
+
 import unittest
 
 from edge.positioning.perspective_mapper import PerspectiveCoordinateMapper

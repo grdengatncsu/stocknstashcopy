@@ -1,3 +1,5 @@
+"""Integration tests that exercise complete scans across edge components."""
+
 import os
 import tempfile
 import unittest

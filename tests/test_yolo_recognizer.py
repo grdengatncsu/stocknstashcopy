@@ -1,3 +1,5 @@
+"""Tests for YOLO result conversion using lightweight fake model objects."""
+
 import tempfile
 import unittest
 from pathlib import Path

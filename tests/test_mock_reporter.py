@@ -1,3 +1,5 @@
+"""Tests for report acknowledgement, failure, and duplicate handling."""
+
 import unittest
 
 from edge.association.associator import (

@@ -1,3 +1,5 @@
+"""Tests for deterministic recognition used without the ML runtime."""
+
 import tempfile
 import unittest
 from pathlib import Path

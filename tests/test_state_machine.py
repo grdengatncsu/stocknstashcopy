@@ -1,3 +1,5 @@
+"""State-transition tests for normal, invalid, error, and recovery events."""
+
 import unittest
 
 from edge.state_machine import State, StateMachine
@@ -413,4 +415,3 @@ class TestScanIdHandling(unittest.TestCase):
 
         self.assertIsNotNone(second_scan_id)
         self.assertNotEqual(first_scan_id, second_scan_id)
-    

@@ -22,6 +22,16 @@ Create and activate the Python virtual environment:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Backend contributors also need the Go version declared in `server/go.mod`.
+Download the backend dependencies from the repository root with:
+
+```bash
+cd server
+go mod download
+cd ..
 ```
 
 ## Before Starting New Work
@@ -57,6 +67,7 @@ Place files in the appropriate locations:
 
 - `edge/` — edge-device Python code
 - `edge/cameras/` — camera interfaces and capture code
+- `server/` — Go HTTP API, SQLite persistence, and backend models
 - `tests/` — automated tests
 - `documentation/` — system explanations, diagrams, and design notes
 - `.github/` — GitHub configuration files
@@ -99,19 +110,27 @@ def handle_capture(self, capture_complete: bool):
 
 ## Testing Changes
 
-Run all automated tests before submitting code:
+Run the Python tests for edge changes:
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-All tests should pass.
+Run the Go tests for backend changes:
+
+```bash
+cd server
+go test ./...
+```
+
+Changes that affect the edge/backend interface should run both suites. All
+applicable tests should pass before a pull request is opened.
 
 When adding or changing behavior, add tests for:
 
 - The expected successful behavior
 - Failure behavior
-- Calls made from the wrong state
+- Calls made from the wrong state, when stateful behavior is involved
 - Important edge cases
 
 ## Committing Changes

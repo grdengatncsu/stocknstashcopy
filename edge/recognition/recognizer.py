@@ -1,25 +1,40 @@
+"""Shared recognition data types and the recognizer interface."""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 @dataclass
 class RecognizedItem:
-    """Represents a recognized item with its name and confidence score."""
+    """One item observation produced from one camera image.
+
+    Multiple observations may later be combined into one physical item by an
+    associator. Bounding boxes and platform positions use normalized values in
+    the range 0.0 to 1.0 so they do not depend on image resolution.
+    """
+
     name: str
     confidence: float
     source_camera: str
     unknown: bool = False
-    bounding_box: tuple[float, float, float, float] | None = None  # (xmin, y_min, x_max, y_max) in normalized coordinates
-    platform_position: tuple[float, float] | None = None  # (x, y) position on the platform in normalized coordinates
+    # Bounding-box order is (left, top, right, bottom).
+    bounding_box: tuple[float, float, float, float] | None = None
+    platform_position: tuple[float, float] | None = None
 
 @dataclass
 class RecognitionReport:
-    """Represents a recognition report containing recognized items and the scan ID."""
+    """Collect all per-camera observations generated for one scan."""
+
     scan_id: str
     items: list[RecognizedItem]
 
 class Recognizer(Protocol):
-    """Protocol for a recognizer that can recognize items from images."""
-    def recognize(self, scan_id: str, captured_images: dict[str, Path]) -> RecognitionReport:
-        """Recognize items from the given images and return a recognition report."""
+    """Contract shared by real and mock recognition implementations."""
+
+    def recognize(
+        self,
+        scan_id: str,
+        captured_images: dict[str, Path],
+    ) -> RecognitionReport:
+        """Convert a set of camera images into item observations."""
         ...

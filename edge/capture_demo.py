@@ -1,9 +1,13 @@
+"""Demonstrate mock three-camera capture and state-machine integration."""
+
 from edge.cameras.mock_camera import MockCamera
 from edge.cameras.three_camera_capture import ThreeCameraCapture
 from edge.state_machine import StateMachine
 
 
 def main():
+    """Move to CAPTURE, copy three fixture images, and print the result."""
+    # These two simulated sensor events move a fresh machine into CAPTURE.
     machine = StateMachine()
     machine.handle_weight_detected()
     machine.handle_stabilizing(
@@ -14,6 +18,7 @@ def main():
     print(f"FSM before capture: {machine.state.name}")
     print(f"Scan ID: {machine.scan_id}")
 
+    # Each mock camera stands in for one permanently mounted physical camera.
     cameras = [
         MockCamera(
             "camera_1",
@@ -44,6 +49,7 @@ def main():
         print(f"Error source: {machine.error_source.name}")
         return
 
+    # The state machine should advance only when every expected view exists.
     capture_complete = len(captured_images) == 3
     machine.handle_capture(
         capture_complete=capture_complete

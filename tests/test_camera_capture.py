@@ -1,3 +1,5 @@
+"""Tests for mock camera files and coordinated three-view capture."""
+
 import tempfile
 import unittest
 from pathlib import Path

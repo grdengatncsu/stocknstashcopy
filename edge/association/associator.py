@@ -1,27 +1,31 @@
-from typing import Protocol
+"""Shared types for consolidating observations from multiple cameras."""
+
 from dataclasses import dataclass
+from typing import Protocol
+
 from edge.recognition.recognizer import RecognitionReport, RecognizedItem
 
 @dataclass
 class AssociatedItem:
-    """Represents one physical item observed by one or more cameras"""
+    """Represent one physical item observed by one or more cameras."""
 
     association_id: str
     name: str
     confidence: float
     observations: list[RecognizedItem]
-    platform_position: tuple[float, float] | None = None  # (x, y) position on the platform in normalized coordinates
+    # Position is the average normalized (x, y) location of valid observations.
+    platform_position: tuple[float, float] | None = None
 
 @dataclass
 class AssociationReport:
-    """Represents a report of associated items from multiple cameras"""
+    """Collect the physical items inferred from all views in one scan."""
+
     scan_id: str
     items: list[AssociatedItem]
 
 class Associator(Protocol):
-    """Associates recognized items from multiple cameras into a single representation of physical items."""
+    """Contract for grouping camera observations into physical items."""
 
     def associate(self, recognition_report: RecognitionReport) -> AssociationReport:
-        """Associate recognized items from multiple cameras into a single representation of physical items."""
+        """Consolidate a recognition report into unique physical items."""
         ...
-
