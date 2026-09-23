@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "household_id": "7681bc26-b22e-4a9a-a4b7-7b3cf0f80a61",
+      "name": "Honey Nut Cheerios",
+      "upc": "016000275287",
+      "quantity": 1,
+      "expiration_date": null,
+      "version": 4,
+      "created_at": "2026-09-23T14:00:00Z",
+      "updated_at": "2026-09-23T14:30:00Z",
+      "deleted_at": null
+    }
+  ],
+  "sync_cursor": "2026-09-23T14:30:00Z"
+}

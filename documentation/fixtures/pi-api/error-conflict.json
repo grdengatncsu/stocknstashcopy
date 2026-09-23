@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "version_conflict",
+    "message": "inventory item changed since it was last read"
+  }
+}

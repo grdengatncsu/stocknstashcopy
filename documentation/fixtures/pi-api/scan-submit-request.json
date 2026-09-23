@@ -1,0 +1,21 @@
+{
+  "scan_id": "scan-20260923-001",
+  "items": [
+    {
+      "association_id": "scan-20260923-001:item-1",
+      "name": "Honey Nut Cheerios",
+      "upc": "016000275287",
+      "confidence": 0.97,
+      "quantity": 1,
+      "requires_review": false
+    },
+    {
+      "association_id": "scan-20260923-001:item-2",
+      "name": "Coca-Cola Zero",
+      "upc": null,
+      "confidence": 0.68,
+      "quantity": 1,
+      "requires_review": true
+    }
+  ]
+}

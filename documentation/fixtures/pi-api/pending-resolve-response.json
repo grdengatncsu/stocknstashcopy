@@ -1,0 +1,12 @@
+{
+  "id": "c1053a90-f64b-486f-baf8-b6abfafc6aa1",
+  "household_id": "7681bc26-b22e-4a9a-a4b7-7b3cf0f80a61",
+  "name": "Coca-Cola Zero Sugar",
+  "upc": "049000051236",
+  "quantity": 1,
+  "expiration_date": null,
+  "version": 1,
+  "created_at": "2026-09-23T14:45:00Z",
+  "updated_at": "2026-09-23T14:45:00Z",
+  "deleted_at": null
+}

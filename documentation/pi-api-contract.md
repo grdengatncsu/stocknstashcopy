@@ -1,167 +1,152 @@
-# Stock 'n Stash Pi API Contract
+# Stock 'n Stash API Contract
 
-## Purpose
+## Status
 
-This document defines the local interface owned by the Stock 'n Stash Raspberry Pi and how that interface fits into the product's remote-access architecture.
+This document is the revised target contract for GitHub Issue #37. It defines
+the shared data model and API behavior for the Python edge pipeline, the Go Pi
+service, synchronized Supabase state, and the React PWA.
 
-A core product use case is checking home inventory while grocery shopping. Therefore, the production-target architecture must not require the phone to be on the same network as the Raspberry Pi.
+The target contract intentionally includes behavior that the current local Go
+backend does not implement yet. Those differences are listed in
+[Implementation Gaps](#implementation-gaps) so contributors can change the
+code deliberately rather than treating the target behavior as already shipped.
 
-The Raspberry Pi owns local edge responsibilities:
+Example payloads are stored as machine-readable JSON in
+[`documentation/fixtures/pi-api`](fixtures/pi-api/README.md).
 
-- Local inventory persistence for device operation
-- Pending recognition results
-- Duplicate-scan protection
-- The local HTTP API
-- SQLite storage
-- Local operation when internet/cloud connectivity is unavailable
-
-The Python edge software performs hardware control, recognition, and multi-camera association, then reports completed scan results to the Pi backend.
-
-For the production-target architecture, inventory changes are synchronized between the Pi and a cloud backend. The phone PWA uses the cloud-backed inventory service for remote access away from home. During local prototype/demo development, the PWA may still connect directly to the Pi API on the same network.
-
-The PWA does not access SQLite directly.
-
----
-
-## Product Architecture
-
-### Production target
+## Architecture Summary
 
 ```text
-Cameras / Load Cells / Hailo
-            |
-            v
-      Python Edge Software
-            |
-            | local HTTP / JSON
-            v
-      Pi Inventory API
-            |
-            v
-          SQLite
-            |
-            | synchronized changes
-            v
-     Cloud Inventory Service
-            ^
-            | Internet / JSON
-            |
-          Phone PWA
+Python edge pipeline
+        |
+        | local HTTP / JSON
+        v
+Go Pi inventory service
+        |
+        +---- SQLite local state and sync outbox
+        |
+        | authenticated synchronization
+        v
+Supabase / PostgreSQL
+        ^
+        | HTTPS, Auth, RLS, and Realtime
+        |
+React / TypeScript PWA
 ```
 
-The Pi remains able to process scans and persist local state when internet access is unavailable. When connectivity returns, unsynchronized inventory changes are sent to the cloud.
+The Pi continues operating without internet access. Supabase provides the
+remotely accessible shared household inventory. The PWA communicates with
+Supabase in production and may communicate directly with the Pi during
+same-network development and demonstrations.
 
-The phone does not need direct reachability to the Pi for normal remote inventory viewing while the user is away from home.
+The complete responsibility and synchronization design is documented in
+[`system-architecture.md`](system-architecture.md).
 
-### Prototype/local-demo path
+## General Rules
 
-```text
-Phone PWA
-    |
-    | local Wi-Fi / HTTP
-    v
-Pi Inventory API
-    |
-    v
-  SQLite
-```
+- Local Pi API base path: `/api`.
+- Request and response bodies use `application/json` unless the response is
+  `204 No Content`.
+- Permanent record and synchronization-operation IDs are UUID strings.
+- `scan_id` identifies one physical scan and acts as an idempotency key.
+- `association_id` identifies one physical item associated across camera views.
+- Timestamps use RFC 3339/ISO 8601 UTC strings, such as
+  `2026-09-23T14:30:00Z`.
+- Unknown optional values are represented as JSON `null`.
+- The vision pipeline never invents an expiration date.
+- Synchronized records include an integer `version` for optimistic concurrency.
+- Deleted synchronized records retain a `deleted_at` tombstone.
 
-This local path is useful for integration testing and live demonstrations. It is not the complete production access model.
+## Household and Access Model
 
----
+One household owns one shared inventory. A permanent household-owner account
+provides recovery and administrative control. Family members may join with a
+temporary or rotatable household join code and a preferred display name; they
+do not receive private inventories.
 
-## General API Rules
+The one-time product pairing code links a physical Pi device to a household.
+After pairing, the Pi uses a separate revocable device credential. Product
+pairing codes, household join codes, PWA sessions, and Pi device credentials
+are separate credentials and must not be reused for one another.
 
-Base path:
+## Data Models
 
-```text
-/api
-```
-
-Data format:
-
-```text
-application/json
-```
-
-Identifiers:
-
-- `scan_id` uniquely identifies one physical scan.
-- `association_id` identifies one physical item detected during a scan.
-- Inventory and pending-result records receive persistent backend-generated IDs.
-
-Dates and timestamps:
-
-- Timestamps use ISO 8601 format.
-- Unknown expiration dates are represented as `null`.
-- The vision system does not invent an expiration date when one is not known.
-
----
-
-# Data Models
-
-## Inventory Item
+### Inventory Item
 
 ```json
 {
-  "id": "item-123",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "household_id": "7681bc26-b22e-4a9a-a4b7-7b3cf0f80a61",
   "name": "Honey Nut Cheerios",
   "upc": "016000275287",
   "quantity": 1,
   "expiration_date": null,
-  "created_at": "2026-09-20T18:00:00Z",
-  "updated_at": "2026-09-20T18:00:00Z"
+  "version": 4,
+  "created_at": "2026-09-23T14:00:00Z",
+  "updated_at": "2026-09-23T14:30:00Z",
+  "deleted_at": null
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---:|---|
-| `id` | string | Yes | Persistent backend-generated inventory ID |
-| `name` | string | Yes | Product name |
-| `upc` | string or null | No | UPC or barcode if known |
-| `quantity` | integer | Yes | Current inventory quantity |
-| `expiration_date` | string or null | No | Expiration date if known |
-| `created_at` | string | Yes | Creation timestamp |
-| `updated_at` | string | Yes | Last modification timestamp |
+| `id` | UUID string | Yes | Permanent inventory record ID |
+| `household_id` | UUID string | Yes | Household that owns the item |
+| `name` | string | Yes | Nonblank product name |
+| `upc` | string or null | No | UPC/barcode when known |
+| `quantity` | positive integer | Yes | Current inventory quantity |
+| `expiration_date` | string or null | No | Known expiration date |
+| `version` | positive integer | Yes | Cloud-controlled concurrency version |
+| `created_at` | timestamp | Yes | Creation time |
+| `updated_at` | timestamp | Yes | Most recent accepted change |
+| `deleted_at` | timestamp or null | Yes | Soft-delete time; `null` when active |
 
----
+Normal inventory lists exclude records whose `deleted_at` is not `null`.
+Synchronization includes those tombstones so offline clients do not restore
+deleted records.
 
-## Pending Recognition Result
+### Pending Recognition Result
 
 ```json
 {
-  "id": "pending-456",
-  "scan_id": "scan-123",
-  "association_id": "scan-123:item-2",
+  "id": "166092cb-38ce-46ba-851f-a9bd7d885e5c",
+  "household_id": "7681bc26-b22e-4a9a-a4b7-7b3cf0f80a61",
+  "scan_id": "scan-20260923-001",
+  "association_id": "scan-20260923-001:item-2",
   "suggested_name": "Coca-Cola Zero",
   "suggested_upc": null,
   "confidence": 0.68,
   "quantity": 1,
-  "created_at": "2026-09-20T18:01:00Z"
+  "version": 1,
+  "created_at": "2026-09-23T14:01:00Z",
+  "updated_at": "2026-09-23T14:01:00Z",
+  "deleted_at": null
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---:|---|
-| `id` | string | Yes | Backend-generated pending-result ID |
+| `id` | UUID string | Yes | Permanent pending-result ID |
+| `household_id` | UUID string | Yes | Household that owns the result |
 | `scan_id` | string | Yes | Original scan ID |
-| `association_id` | string | Yes | Physical item ID from the edge pipeline |
+| `association_id` | string | Yes | Associated physical item ID |
 | `suggested_name` | string | Yes | Best current recognition result |
-| `suggested_upc` | string or null | No | UPC if known |
-| `confidence` | number | Yes | Recognition confidence |
-| `quantity` | integer | Yes | Suggested quantity |
-| `created_at` | string | Yes | Creation timestamp |
+| `suggested_upc` | string or null | No | Suggested UPC when known |
+| `confidence` | number from 0 through 1 | Yes | Recognition confidence |
+| `quantity` | positive integer | Yes | Suggested quantity |
+| `version` | positive integer | Yes | Cloud-controlled concurrency version |
+| `created_at` | timestamp | Yes | Creation time |
+| `updated_at` | timestamp | Yes | Most recent accepted change |
+| `deleted_at` | timestamp or null | Yes | Resolution/deletion tombstone |
 
----
-
-## Scan Report
+### Scan Report
 
 ```json
 {
-  "scan_id": "scan-123",
+  "scan_id": "scan-20260923-001",
   "items": [
     {
-      "association_id": "scan-123:item-1",
+      "association_id": "scan-20260923-001:item-1",
       "name": "Honey Nut Cheerios",
       "upc": "016000275287",
       "confidence": 0.97,
@@ -169,7 +154,7 @@ Dates and timestamps:
       "requires_review": false
     },
     {
-      "association_id": "scan-123:item-2",
+      "association_id": "scan-20260923-001:item-2",
       "name": "Coca-Cola Zero",
       "upc": null,
       "confidence": 0.68,
@@ -180,145 +165,204 @@ Dates and timestamps:
 }
 ```
 
-Items with `requires_review: false` may be added directly to inventory.
+Items with `requires_review: false` become inventory records. Items with
+`requires_review: true` become pending results. Repeating a successfully
+processed `scan_id` must not create additional records.
 
-Items with `requires_review: true` are stored as pending results until the user confirms or corrects them.
+### Synchronization Operation
 
----
+Offline Pi and PWA changes are represented by idempotent operations:
 
-# Local Pi API Endpoints
+```json
+{
+  "operation_id": "f1efec2b-b3d8-48ab-931f-61fa34c19d0a",
+  "household_id": "7681bc26-b22e-4a9a-a4b7-7b3cf0f80a61",
+  "record_type": "inventory_item",
+  "record_id": "550e8400-e29b-41d4-a716-446655440000",
+  "action": "update",
+  "expected_version": 4,
+  "created_at": "2026-09-23T14:35:00Z"
+}
+```
 
-## Submit Scan Result
+`operation_id` prevents a retry from applying the same change twice.
+`expected_version` prevents stale clients from silently overwriting newer data.
+
+## API Endpoints
+
+### System Status
+
+```text
+GET /api/status
+```
+
+Successful response: `200 OK`.
+
+```json
+{
+  "status": "ok",
+  "sync": {
+    "state": "synced",
+    "pending_operations": 0,
+    "last_successful_sync_at": "2026-09-23T14:35:10Z"
+  }
+}
+```
+
+### Submit Scan Result
 
 ```text
 POST /api/scans
 ```
 
-Example request:
+Successful first submission: `200 OK`.
 
 ```json
 {
-  "scan_id": "scan-123",
-  "items": [
-    {
-      "association_id": "scan-123:item-1",
-      "name": "Honey Nut Cheerios",
-      "upc": "016000275287",
-      "confidence": 0.97,
-      "quantity": 1,
-      "requires_review": false
-    }
-  ]
-}
-```
-
-Example response:
-
-```json
-{
-  "scan_id": "scan-123",
+  "scan_id": "scan-20260923-001",
   "status": "accepted"
 }
 ```
 
-Behavior:
+Successful duplicate submission: `200 OK`.
 
-- Confirmed items are added to inventory.
-- Uncertain items are added to the pending-results list.
-- Repeated `scan_id` values must not duplicate inventory.
+```json
+{
+  "scan_id": "scan-20260923-001",
+  "status": "already_processed"
+}
+```
 
----
+A scan is fully processed or not processed at all. Confirmed items, pending
+results, and the processed-scan record are stored atomically.
 
-## List Inventory
+### List Inventory
 
 ```text
 GET /api/inventory
 ```
 
-Example response:
+Successful response: `200 OK`.
 
 ```json
 {
   "items": [
     {
-      "id": "item-123",
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "household_id": "7681bc26-b22e-4a9a-a4b7-7b3cf0f80a61",
       "name": "Honey Nut Cheerios",
       "upc": "016000275287",
       "quantity": 1,
       "expiration_date": null,
-      "created_at": "2026-09-20T18:00:00Z",
-      "updated_at": "2026-09-20T18:00:00Z"
+      "version": 4,
+      "created_at": "2026-09-23T14:00:00Z",
+      "updated_at": "2026-09-23T14:30:00Z",
+      "deleted_at": null
     }
-  ]
+  ],
+  "sync_cursor": "2026-09-23T14:30:00Z"
 }
 ```
 
----
+An empty inventory returns `"items": []`.
 
-## Add Inventory Item Manually
+### Add Inventory Item
 
 ```text
 POST /api/inventory
 ```
 
-Manual inventory addition is supported as a fallback when an item cannot be recognized automatically.
+```json
+{
+  "name": "Whole Milk",
+  "upc": "012345678901",
+  "quantity": 1,
+  "expiration_date": "2026-10-01"
+}
+```
 
-Example request:
+Successful response: `201 Created` with the created inventory item.
+
+### Edit Inventory Item
+
+```text
+PATCH /api/inventory/{id}
+```
 
 ```json
 {
-  "name": "Pop-Tarts",
-  "upc": null,
-  "quantity": 1,
+  "expected_version": 4,
+  "quantity": 2,
   "expiration_date": null
 }
 ```
 
-Behavior:
+Successful response: `200 OK` with the updated item at version `5`.
 
-- The backend generates the persistent inventory ID and timestamps.
-- The new item is stored in inventory.
-- In the production-target architecture, a manual addition made remotely through the phone is written to the cloud inventory service and synchronized back to the Pi.
+PATCH fields use three-state behavior:
 
----
+- Omitted field: keep the current value.
+- Supplied non-null value: replace the current value.
+- Supplied `null`: clear a nullable field.
 
-## List Pending Results
+`upc` and `expiration_date` may be cleared with `null`. `name` and `quantity`
+may not be `null`; supplied names must be nonblank and supplied quantities must
+be positive.
+
+If `expected_version` is stale, the response is `409 Conflict`.
+
+### Remove Inventory Item
+
+```text
+DELETE /api/inventory/{id}
+If-Match: "4"
+```
+
+Successful response: `204 No Content`. The record receives `deleted_at` and a
+new version instead of being immediately erased. A stale `If-Match` value
+returns `409 Conflict`.
+
+### List Pending Results
 
 ```text
 GET /api/pending
 ```
 
-Example response:
+Successful response: `200 OK`.
 
 ```json
 {
   "items": [
     {
-      "id": "pending-456",
-      "scan_id": "scan-123",
-      "association_id": "scan-123:item-2",
+      "id": "166092cb-38ce-46ba-851f-a9bd7d885e5c",
+      "household_id": "7681bc26-b22e-4a9a-a4b7-7b3cf0f80a61",
+      "scan_id": "scan-20260923-001",
+      "association_id": "scan-20260923-001:item-2",
       "suggested_name": "Coca-Cola Zero",
       "suggested_upc": null,
       "confidence": 0.68,
       "quantity": 1,
-      "created_at": "2026-09-20T18:01:00Z"
+      "version": 1,
+      "created_at": "2026-09-23T14:01:00Z",
+      "updated_at": "2026-09-23T14:01:00Z",
+      "deleted_at": null
     }
-  ]
+  ],
+  "sync_cursor": "2026-09-23T14:01:00Z"
 }
 ```
 
----
+No pending results returns `"items": []`.
 
-## Resolve Pending Result
+### Resolve Pending Result
 
 ```text
 POST /api/pending/{id}/resolve
 ```
 
-Example request:
-
 ```json
 {
+  "expected_version": 1,
   "name": "Coca-Cola Zero Sugar",
   "upc": "049000051236",
   "quantity": 1,
@@ -326,58 +370,28 @@ Example request:
 }
 ```
 
-Behavior:
+Successful response: `200 OK` with the created inventory item. Omitted
+correction fields use the pending result's suggested values. The pending result
+receives a tombstone atomically with inventory creation. A stale
+`expected_version` returns `409 Conflict`.
 
-- The pending result is removed from the pending list.
-- The confirmed or corrected product is added to inventory.
+## Success Status Summary
 
----
+| Endpoint | Status |
+|---|---:|
+| `GET /api/status` | `200 OK` |
+| `GET /api/inventory` | `200 OK` |
+| `POST /api/inventory` | `201 Created` |
+| `PATCH /api/inventory/{id}` | `200 OK` |
+| `DELETE /api/inventory/{id}` | `204 No Content` |
+| `GET /api/pending` | `200 OK` |
+| `POST /api/pending/{id}/resolve` | `200 OK` |
+| `POST /api/scans` | `200 OK` |
 
-## Edit Inventory Item
+Scan submission remains `200 OK` because it is an idempotent processing command
+that may create multiple records or acknowledge an already-processed scan.
 
-```text
-PATCH /api/inventory/{id}
-```
-
-Example request:
-
-```json
-{
-  "name": "Honey Nut Cheerios",
-  "quantity": 2,
-  "expiration_date": null
-}
-```
-
-The backend updates only the fields provided in the request.
-
----
-
-## Remove Inventory Item
-
-```text
-DELETE /api/inventory/{id}
-```
-
----
-
-## System Status
-
-```text
-GET /api/status
-```
-
-Example response:
-
-```json
-{
-  "status": "ok"
-}
-```
-
----
-
-# Error Format
+## Error Format
 
 ```json
 {
@@ -388,139 +402,127 @@ Example response:
 }
 ```
 
-| HTTP Code | Meaning |
-|---|---|
-| `200` | Request succeeded |
-| `201` | Resource created |
-| `400` | Invalid request |
-| `404` | Resource not found |
-| `409` | Request conflicts with existing state |
-| `500` | Internal backend error |
-| `503` | Required service temporarily unavailable |
+| HTTP status | Error code | Meaning |
+|---:|---|---|
+| `400` | `invalid_request` | Malformed JSON or invalid fields |
+| `401` | `unauthorized` | Missing or invalid authentication |
+| `403` | `forbidden` | Authenticated identity cannot access the household or operation |
+| `404` | `not_found` | Requested record does not exist or is not visible |
+| `409` | `version_conflict` | `expected_version` or `If-Match` is stale |
+| `500` | `internal_error` | Unexpected backend failure |
+| `503` | `service_unavailable` | Required dependency is temporarily unavailable |
 
----
+### Implemented Invalid-Request Messages
 
-# Duplicate Scan Protection
+The current Go handlers and tests use these messages. Contract changes should
+update implementation, tests, fixtures, and this table together.
 
-`scan_id` acts as an idempotency key.
+| Endpoint | Invalid condition | `error.message` |
+|---|---|---|
+| `POST /api/inventory` | Malformed JSON | `failed to parse request body` |
+| `POST /api/inventory` | Missing or blank name | `name is required` |
+| `POST /api/inventory` | Missing, zero, or negative quantity | `quantity must be greater than zero` |
+| `PATCH /api/inventory/{id}` | Malformed JSON | `invalid JSON request body` |
+| `PATCH /api/inventory/{id}` | Supplied name is blank | `name is required` |
+| `PATCH /api/inventory/{id}` | Supplied quantity is zero or negative | `quantity must be greater than zero` |
+| `POST /api/pending/{id}/resolve` | Malformed JSON | `failed to parse request body` |
+| `POST /api/pending/{id}/resolve` | Supplied name is blank | `name is required` |
+| `POST /api/pending/{id}/resolve` | Supplied quantity is zero or negative | `quantity must be greater than zero` |
+| `POST /api/scans` | Malformed JSON | `failed to parse scan report` |
+| `POST /api/scans` | Missing or blank scan ID | `scan_id is required` |
+| `POST /api/scans` | Missing or empty items | `items are required` |
+| `POST /api/scans` | Missing or blank association ID | `association_id cannot be blank` |
+| `POST /api/scans` | Blank item name | `name cannot be blank` |
+| `POST /api/scans` | Confidence outside 0 through 1 | `confidence must be between 0 and 1` |
+| `POST /api/scans` | Zero or negative item quantity | `item quantity must be greater than zero` |
+| `POST /api/scans` | Repeated association ID | `item association_id must be unique` |
 
-If the Python edge software retries a scan report using a `scan_id` that has already been processed, the backend must not add the groceries a second time.
+## Offline and Synchronization Behavior
 
-Example response:
+### Pi
 
-```json
-{
-  "scan_id": "scan-123",
-  "status": "already_processed"
-}
-```
+- Writes local SQLite state before acknowledging a local operation.
+- Adds synchronized changes to an outbox identified by operation UUID.
+- Uploads immediately when online and retries unacknowledged operations.
+- Synchronizes at startup and after reconnecting.
+- Polls incrementally for cloud changes approximately every two seconds, with a
+  slower recovery check as a fallback.
+- Never duplicates an operation solely because a response was lost.
 
-The duplicate request should still receive a successful acknowledgment so the edge state machine can continue.
+### PWA
 
----
+- Caches the application shell and latest household state.
+- Stores offline additions, edits, resolutions, and deletions in IndexedDB.
+- Updates the interface optimistically and labels unsynchronized changes.
+- Sends queued operations after reconnecting and removes them only after
+  acknowledgment.
+- Receives Supabase Realtime updates while online.
+- Displays `offline`, `pending`, `syncing`, `synced`, and `failed` states plus
+  the last successful synchronization time.
 
-# Connectivity and Synchronization Behavior
+### Conflict Handling
 
-## Pi loses internet/cloud connectivity
+- Accepted changes increment `version`.
+- Stale versions return `409 Conflict`.
+- The client refreshes the current record before retrying.
+- Device timestamps are not used to silently choose a winner.
+- A newer accepted tombstone prevents an older offline copy from restoring a
+  deleted record.
 
-The Pi should:
-
-- Continue local recognition and inventory operations.
-- Persist changes in SQLite.
-- Retain unsynchronized changes for later cloud synchronization.
-- Resume synchronization when connectivity returns.
-
-## Phone is away from home
-
-The phone should:
-
-- Use the cloud inventory service over the internet.
-- Be able to list inventory without direct access to the Pi or home network.
-- Send manual additions, edits, removals, and pending-result decisions through the cloud-backed service when those capabilities are exposed remotely.
-
-## Local prototype/demo connection
-
-When the PWA is connected directly to the Pi:
-
-- Display when the Pi is unavailable.
-- Do not claim that an edit or correction was saved unless acknowledged.
-- Allow retry after reconnection.
-
-## Edge pipeline cannot reach the Pi backend
-
-The Python edge software should:
-
-- Treat the report as unacknowledged.
-- Retain the current `scan_id`.
-- Allow the report operation to be retried.
-- Avoid repeating successful capture or recognition steps.
-
-Because the Pi backend stores processed `scan_id` values, a retry must not create duplicate inventory.
-
----
-
-# Responsibility Boundaries
+## Responsibility Boundaries
 
 | Component | Responsibility |
 |---|---|
-| Python edge software | Hardware control, detection, recognition, association, scan reporting |
-| Pi backend | Local HTTP API, local inventory logic, pending results, duplicate-scan protection, local persistence |
-| SQLite | Local operational storage and offline resilience |
-| Cloud inventory service | Remotely accessible synchronized inventory/account state |
-| Cloud sync component | Transfers acknowledged changes between Pi local state and cloud state, retries after outages, applies conflict rules |
-| Phone PWA | Inventory display, remote inventory access, manual additions, pending-result review, user edits |
+| Python edge pipeline | Hardware control, recognition, association, scan reporting |
+| Go Pi service | Local API, SQLite persistence, pending results, scan idempotency, outbox, cloud synchronization |
+| SQLite | Offline-capable local state and queued operations |
+| Supabase/PostgreSQL | Shared household state, record versions, tombstones, authentication, authorization, Realtime |
+| React PWA | Inventory UI, review/correction, offline cache and queue, synchronization status |
 
-The phone does not own the authoritative inventory database and does not write directly to SQLite.
+Privileged Supabase credentials must never be shipped in the PWA. The PWA uses
+a publishable key with authenticated sessions and row-level security. The Pi
+uses a separate revocable device credential.
 
----
+## Implementation Gaps
 
-# Cloud Sync Requirements
+The following target-contract changes still require code and test work:
 
-The exact cloud provider and synchronization protocol are intentionally separate from the local Pi API implementation, but the product architecture requires:
+| Area | Current local Go backend | Target contract |
+|---|---|---|
+| Permanent IDs | Timestamp- or association-derived strings | UUIDs; scan and association IDs remain separate |
+| List responses | Top-level arrays | `{ "items": [...], "sync_cursor": ... }` envelopes |
+| Nullable PATCH fields | Omitted and explicit `null` are not distinguishable | Omitted means unchanged; `null` clears nullable fields |
+| Deletion | Hard delete | Versioned `deleted_at` tombstone |
+| Concurrency | No record version | `expected_version`/`If-Match`; stale change returns `409` |
+| Household scope | No household fields | Every synchronized record belongs to a household |
+| Cloud state | Not implemented | Supabase/PostgreSQL with Auth, RLS, and Realtime |
+| Synchronization | Not implemented | SQLite outbox, retries, incremental pull, operation UUIDs |
+| Pairing and profiles | Not implemented | One-time product pairing and rotatable household join codes |
+| Status endpoint | `{ "status": "ok" }` | Includes synchronization health metadata |
 
-- Remote inventory reads while the user is away from home.
-- Pi-to-cloud synchronization of device-generated inventory changes.
-- Cloud-to-Pi synchronization of remote user edits and manual additions.
-- Retry after temporary internet outages.
-- A defined conflict-resolution strategy.
-- Authentication/authorization before exposing a user's inventory remotely.
+Do not check the Issue #37 implementation-format requirement until these code
+differences have been reconciled and tested.
 
-The Pi should not be exposed directly to the public internet as the normal remote-access mechanism.
+## Open Product Questions Outside This Contract
 
----
-
-# Open Design Questions
-
-- What confidence threshold should cause `requires_review` to become `true`?
-- Should scanning the same UPC automatically increase the existing inventory quantity?
+- What confidence threshold sets `requires_review`?
+- Should repeated scans of the same UPC automatically merge quantities?
 - How should products without UPCs be matched against existing inventory?
-- Should recognition evidence be retained after an uncertain item is confirmed?
-- Which cloud provider/service should host synchronized inventory for the prototype and production target?
-- What is the minimum authentication model required for the prototype?
-- What conflict-resolution rule should apply if the Pi and phone change the same inventory item while disconnected?
-- Should product-database metadata be stored in the same SQLite database or a separate cache?
+- How long should recognition evidence be retained?
+- Should product-catalog metadata share the inventory database or use a cache?
 
----
+These questions do not change the transport, authentication, offline, or
+synchronization decisions in this contract.
 
-# Resolved Design Decisions
+## Review Checklist
 
-- Manual inventory additions are supported as a fallback for items that cannot be recognized.
-- The production-target phone experience must support inventory access away from the home network.
-- The Pi remains the local edge backend and offline-capable persistence layer.
-- Remote phone access uses a cloud-backed synchronized inventory service rather than requiring direct public access to the Pi.
-
----
-
-# Review Checklist
-
-- [ ] Inventory-item fields are agreed on.
-- [ ] Pending-result fields are agreed on.
-- [ ] Scan-report format is agreed on.
-- [ ] Local inventory API operations are agreed on.
-- [ ] Manual-add behavior is agreed on.
-- [ ] Pending-result confirmation behavior is agreed on.
-- [ ] Error responses are documented.
-- [ ] Local disconnection behavior is documented.
-- [ ] Remote/cloud synchronization responsibilities are documented.
-- [ ] Edge/API owner reviewed the contract.
-- [ ] PWA contributor reviewed the contract.
+- [x] Inventory-item fields are agreed on.
+- [x] Pending-result fields are agreed on.
+- [x] Scan-report format is agreed on.
+- [x] Inventory API operations are agreed on.
+- [x] Pending-result confirmation behavior is agreed on.
+- [x] Error response shape and validation behavior are documented.
+- [x] Offline and synchronization behavior are documented.
+- [x] Production remote-access responsibilities are documented.
+- [ ] Edge/API owner reviewed the revised contract and fixtures.
+- [ ] PWA contributor reviewed the revised contract and fixtures.
