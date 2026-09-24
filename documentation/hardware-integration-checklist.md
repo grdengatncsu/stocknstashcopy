@@ -122,20 +122,19 @@ Run its unit and loopback HTTP tests with:
 python -m unittest tests.test_http_reporter -v
 ```
 
-For a full local edge-to-Go check, start the API in one terminal:
+Run the full local edge-to-Go check with:
 
 ```bash
-cd server
-STOCKNSTASH_ADDR=127.0.0.1:8080 \
-STOCKNSTASH_DB_PATH=/tmp/stocknstash-e2e.db \
-go run .
+STOCKNSTASH_RUN_GO_INTEGRATION=1 \
+python -m unittest tests.test_http_reporter_go_integration -v
 ```
 
-Configure `HttpReporter` with `base_url="http://127.0.0.1:8080"` and an
-explicit review threshold. Re-send the same report and verify that the first
-response is `accepted`, the second is `already_processed`, and only one item is
-stored. The repeated `scan_id` is intentional: it verifies idempotency rather
-than creating a second test scan.
+The test starts the real Go service on an available loopback port with a
+temporary SQLite database, sends the same report twice through `HttpReporter`,
+and verifies that only one inventory item is stored. The repeated `scan_id` is
+intentional: it verifies idempotency rather than creating a second test scan.
+The environment flag keeps the slower cross-language integration test out of
+the default Python unit-test run.
 
 ## Physical Platform Sign-Off
 
