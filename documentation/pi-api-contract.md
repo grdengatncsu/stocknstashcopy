@@ -483,25 +483,27 @@ Privileged Supabase credentials must never be shipped in the PWA. The PWA uses
 a publishable key with authenticated sessions and row-level security. The Pi
 uses a separate revocable device credential.
 
-## Implementation Gaps
+## Implementation Status and Gaps
 
-The following target-contract changes still require code and test work:
+The local API now implements the core offline contract. The remaining rows keep
+cloud and household work visible without making completed local work look open:
 
-| Area | Current local Go backend | Target contract |
+| Area | Current local Go backend | Remaining work |
 |---|---|---|
-| Permanent IDs | Timestamp- or association-derived strings | UUIDs; scan and association IDs remain separate |
-| List responses | Top-level arrays | `{ "items": [...], "sync_cursor": ... }` envelopes |
-| Nullable PATCH fields | Omitted and explicit `null` are not distinguishable | Omitted means unchanged; `null` clears nullable fields |
-| Deletion | Hard delete | Versioned `deleted_at` tombstone |
-| Concurrency | No record version | `expected_version`/`If-Match`; stale change returns `409` |
+| Permanent IDs | Inventory and pending records use UUIDs; scan and association IDs remain separate | Cloud operation IDs are still needed |
+| List responses | `{ "items": [...], "sync_cursor": ... }` envelopes implemented | Cursor-filtered incremental reads are not implemented |
+| Nullable PATCH fields | Omitted versus explicit `null` implemented with `Optional` | None for the local endpoints |
+| Deletion | Versioned inventory tombstones implemented | Tombstone upload and retention policy remain |
+| Concurrency | `expected_version`/`If-Match` and `409` responses implemented | Reconcile versions with cloud writes |
 | Household scope | No household fields | Every synchronized record belongs to a household |
 | Cloud state | Not implemented | Supabase/PostgreSQL with Auth, RLS, and Realtime |
 | Synchronization | Not implemented | SQLite outbox, retries, incremental pull, operation UUIDs |
 | Pairing and profiles | Not implemented | One-time product pairing and rotatable household join codes |
 | Status endpoint | `{ "status": "ok" }` | Includes synchronization health metadata |
 
-Do not check the Issue #37 implementation-format requirement until these code
-differences have been reconciled and tested.
+Issue #37's local implementation format has been reconciled and tested. Cloud
+completion remains separate work rather than a reason to hold the local API
+open indefinitely.
 
 ## Open Product Questions Outside This Contract
 

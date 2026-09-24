@@ -1,17 +1,22 @@
-"""Run the YOLO recognizer on the three saved development images."""
+"""Run the portable YOLO baseline on saved development images."""
 
 from pathlib import Path
 
 from edge.recognition.yolo_recognizer import YoloRecognizer
 
 
-def main():
-    """Print every model detection from a repeatable three-camera scan."""
+def main() -> None:
+    """Print model detections for a repeatable three-camera fixture set."""
+    # HARDWARE TODO: Replace these saved paths with output from the physical
+    # camera adapter once the MIPI and USB camera assignments are verified.
     captured_images = {
         "overhead": Path("mock_camera_inputs/camera_1.jpg"),
         "rear_left": Path("mock_camera_inputs/camera_2.jpg"),
         "front_right": Path("mock_camera_inputs/camera_3.jpg"),
     }
+
+    # HARDWARE TODO: The .pt file runs the development baseline. Production
+    # must use the approved Hailo HEF model and its hardware-backed recognizer.
     recognizer = YoloRecognizer(
         model_path="models/yolov8n.pt",
         confidence_threshold=0.50,

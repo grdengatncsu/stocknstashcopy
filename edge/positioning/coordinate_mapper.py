@@ -1,4 +1,4 @@
-"""Interface for translating camera pixels into a shared platform space."""
+"""Interface for translating camera detections into a shared platform space."""
 
 from typing import Protocol
 
@@ -11,5 +11,5 @@ class CoordinateMapper(Protocol):
         camera_id: str,
         bounding_box: tuple[float, float, float, float],
     ) -> tuple[float, float] | None:
-        """Map one bounding box to normalized ``(x, y)`` platform coordinates."""
+        """Map a bounding box to normalized ``(x, y)`` platform coordinates."""
         ...

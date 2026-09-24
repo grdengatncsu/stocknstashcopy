@@ -1,1 +1,1 @@
-"""Map detections from camera coordinates into a shared platform space."""
+"""Map camera detections into a shared platform coordinate system."""

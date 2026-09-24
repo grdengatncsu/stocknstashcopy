@@ -37,13 +37,17 @@ A normal scan proceeds as follows:
 8. It waits for the platform to become empty, clears the completed scan data,
    and returns to `IDLE`.
 
+The current code does not yet control platform lighting or actuators. Those
+integration points are marked with `HARDWARE TODO` or `PLATFORM BLOCKED` and
+tracked in [`hardware-integration-checklist.md`](hardware-integration-checklist.md).
+
 ## State Reference
 
 | State | Purpose | Expected input or action | Leaves the state when |
 | --- | --- | --- | --- |
 | `IDLE` | Wait for a new item | Load sensor reports weight | Weight is detected |
 | `STABILIZING` | Prevent motion from affecting the scan | Read weight presence and stability | Weight is stable, or the item is removed |
-| `CAPTURE` | Save all camera views | Capture three images | All three images are available |
+| `CAPTURE` | Save all camera views | Illuminate and capture three images | All three images are available |
 | `RECOGNIZE` | Identify and consolidate items | Run recognition, then association | An association report exists |
 | `REPORT` | Deliver the completed result | Send the association report | The receiver acknowledges it |
 | `RESET` | Finish the physical scan cycle | Check whether the platform is empty | The item is removed |
@@ -143,6 +147,8 @@ expecting one call to complete an entire scan.
 - Add focused transition tests in `tests/test_state_machine.py`.
 - Add controller behavior tests in `tests/test_scan_controller.py`.
 - Add complete scan scenarios in `tests/test_scan_integration.py`.
+- Record physical interface decisions in
+  `documentation/hardware-integration-checklist.md`.
 
 When adding a new state, update the `State` enum, add its event handler, teach
 `ScanController.process_current_state()` how to dispatch it, and test both its

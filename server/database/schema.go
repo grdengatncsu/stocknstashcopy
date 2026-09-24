@@ -121,6 +121,8 @@ func ensureColumn(
 	column string,
 	definition string,
 ) error {
+	// SQLite lacks ADD COLUMN IF NOT EXISTS. Inspect the table first so startup
+	// migrations remain safe for both old and already-updated databases.
 	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
 	if err != nil {
 		return err

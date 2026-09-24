@@ -1,11 +1,11 @@
-"""YOLO-backed grocery recognition for captured camera images."""
+"""Ultralytics YOLO baseline for recognition development on saved images."""
 
 from pathlib import Path
 
 from edge.recognition.recognizer import RecognitionReport, RecognizedItem
 
-# Keeping the module importable without Ultralytics lets lightweight unit tests
-# replace ``YOLO`` with a fake model instead of installing the full ML runtime.
+# Keep this module importable without the large Ultralytics dependency so unit
+# tests can replace YOLO with a lightweight fake.
 try:
     from ultralytics import YOLO
 except ModuleNotFoundError:
@@ -15,7 +15,13 @@ from edge.positioning.coordinate_mapper import CoordinateMapper
 
 
 class YoloRecognizer:
-    """Recognize zero or more item observations in each of three views."""
+    """Recognize item observations in each of three camera images.
+
+    HARDWARE TODO: This is the portable development baseline. Replace or wrap
+    it with a Hailo-8L implementation that loads the approved HEF model through
+    the Hailo runtime. Record the deployed model path, input resolution, label
+    map, and confidence threshold during model deployment.
+    """
 
     def __init__(
         self,
@@ -26,13 +32,22 @@ class YoloRecognizer:
         """Load a model and configure the minimum accepted confidence score."""
         if not 0.0 <= confidence_threshold <= 1.0:
             raise ValueError("confidence_threshold must be between 0.0 and 1.0")
+        if YOLO is None:
+            raise RuntimeError(
+                "Ultralytics is not installed; run 'pip install -r requirements.txt' "
+                "to use YoloRecognizer"
+            )
         self.model_path = model_path
         self.confidence_threshold = confidence_threshold
         self.model = YOLO(model_path)
         self.coordinate_mapper = coordinate_mapper
 
-    def recognize(self, scan_id: str, captured_images: dict[str, Path]) -> RecognitionReport:
-        """Run inference on every view and return normalized observations."""
+    def recognize(
+        self,
+        scan_id: str,
+        captured_images: dict[str, Path],
+    ) -> RecognitionReport:
+        """Recognize items in the captured images and return a recognition report."""
         if not scan_id:
             raise ValueError("scan_id must be provided")
         if len(captured_images) != 3:
@@ -42,7 +57,10 @@ class YoloRecognizer:
 
         for camera_id, image_path in captured_images.items():
             if not image_path.exists():
-                raise FileNotFoundError(f"Captured image for camera {camera_id} does not exist at {image_path}")
+                raise FileNotFoundError(
+                    f"Captured image for camera {camera_id} does not exist "
+                    f"at {image_path}"
+                )
 
             results = self.model.predict(
                 source=str(image_path),
@@ -50,8 +68,8 @@ class YoloRecognizer:
                 verbose=False,
             )
 
-            # One image is submitted per call, so Ultralytics returns one
-            # top-level result even when no object boxes are detected.
+            # Exactly one image is submitted per call, so the first result
+            # corresponds to the current camera even when it has no boxes.
             result = results[0]
 
             for box in result.boxes:
@@ -59,16 +77,18 @@ class YoloRecognizer:
                 name = result.names[class_id]
                 confidence = float(box.conf.item())
 
-                # ``xyxyn`` supplies resolution-independent coordinates in
-                # (left, top, right, bottom) order.
+                # ``xyxyn`` uses normalized (left, top, right, bottom) values.
                 xmin, ymin, xmax, ymax = box.xyxyn[0].tolist()
 
                 bounding_box = (float(xmin), float(ymin), float(xmax), float(ymax))
                 platform_position = None
                 if self.coordinate_mapper is not None:
-                    # Shared platform coordinates allow the associator to match
-                    # the same object across different camera angles.
-                    platform_position = self.coordinate_mapper.map_detection(camera_id, bounding_box)
+                    # Shared platform coordinates let association compare
+                    # observations from different camera angles.
+                    platform_position = self.coordinate_mapper.map_detection(
+                        camera_id,
+                        bounding_box,
+                    )
 
                 recognized_item = RecognizedItem(
                     name=name,

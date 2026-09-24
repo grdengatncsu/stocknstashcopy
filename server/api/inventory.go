@@ -2,7 +2,6 @@ package api
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -15,7 +14,8 @@ import (
 	"github.com/jae-white/stock-n-stash/server/models"
 )
 
-// Inventory list response with items and sync cursor.
+// InventoryListResponse wraps active records with the newest update timestamp
+// that a future incremental synchronization request can use as a cursor.
 type InventoryListResponse struct {
 	Items      []models.InventoryItem `json:"items"`
 	SyncCursor string                 `json:"sync_cursor"`
@@ -26,20 +26,14 @@ func GetInventoryHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		items, err := database.GetInventoryItems(db)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "internal_error",
-					"message": "failed to retrieve inventory",
-				},
-			})
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "failed to retrieve inventory")
 			return
 		}
 		syncCursor := ""
 		var latestTime time.Time
 
+		// Use the latest valid update time as the initial full-list cursor. Invalid
+		// stored timestamps are ignored rather than breaking the whole response.
 		for _, item := range items {
 			itemTime, err := time.Parse(time.RFC3339, item.UpdatedAt)
 			if err != nil {
@@ -50,8 +44,7 @@ func GetInventoryHandler(db *sql.DB) http.HandlerFunc {
 				syncCursor = item.UpdatedAt
 			}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(InventoryListResponse{
+		writeJSON(w, http.StatusOK, InventoryListResponse{
 			Items:      items,
 			SyncCursor: syncCursor,
 		})
@@ -78,87 +71,37 @@ func UpdateInventoryHandler(db *sql.DB) http.HandlerFunc {
 		item, err := database.GetInventoryItemByID(db, id)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusNotFound)
-				json.NewEncoder(w).Encode(map[string]any{
-					"error": map[string]string{
-						"code":    "not_found",
-						"message": "inventory item not found",
-					},
-				})
+				writeAPIError(w, http.StatusNotFound, "not_found", "inventory item not found")
 				return
 			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "internal_error",
-					"message": "failed to retrieve inventory item",
-				},
-			})
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "failed to retrieve inventory item")
 			return
 		}
 
 		var request UpdateInventoryRequest
 
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "invalid JSON request body",
-				},
-			})
+		if err := decodeJSONBody(w, r, &request); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "invalid JSON request body")
 			return
 		}
 		// Validate required fields.
 		if request.Name.Present && (request.Name.Value == nil || strings.TrimSpace(*request.Name.Value) == "") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "name is required",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "name is required")
 			return
 		}
 
 		if request.Quantity.Present && (request.Quantity.Value == nil || *request.Quantity.Value <= 0) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "quantity must be greater than zero",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "quantity must be greater than zero")
 			return
 		}
 
 		if !request.ExpectedVersion.Present || request.ExpectedVersion.Value == nil {
-			//400 invalid_request
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "expected_version is required",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "expected_version is required")
 			return
 		}
 
 		if *request.ExpectedVersion.Value <= 0 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "expected_version must be greater than zero",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "expected_version must be greater than zero")
 			return
 		}
 
@@ -180,33 +123,17 @@ func UpdateInventoryHandler(db *sql.DB) http.HandlerFunc {
 
 		if err := database.UpdateInventoryItem(db, item); err != nil {
 			if errors.Is(err, database.ErrVersionConflict) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusConflict)
-				json.NewEncoder(w).Encode(map[string]any{
-					"error": map[string]string{
-						"code":    "version_conflict",
-						"message": "inventory item has changed",
-					},
-				})
+				writeAPIError(w, http.StatusConflict, "version_conflict", "inventory item has changed")
 				return
 			}
 
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "internal_error",
-					"message": "failed to update inventory item",
-				},
-			})
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "failed to update inventory item")
 			return
 		}
 
 		item.Version++
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(item)
+		writeJSON(w, http.StatusOK, item)
 	}
 }
 
@@ -216,40 +143,20 @@ func DeleteInventoryHandler(db *sql.DB) http.HandlerFunc {
 		id := r.PathValue("id")
 		ifMatch := r.Header.Get("If-Match")
 		if ifMatch == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "If-Match version is required",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "If-Match version is required")
 			return
 		}
 
 		if len(ifMatch) < 3 || ifMatch[0] != '"' || ifMatch[len(ifMatch)-1] != '"' {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "If-Match must contain a positive integer version",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "If-Match must contain a positive integer version")
 			return
 		}
 
-		// Item exists, so delete it.
+		// Quoted versions follow the HTTP ETag convention and avoid confusing a
+		// record version with an arbitrary unquoted request value.
 		expectedVersion, err := strconv.Atoi(ifMatch[1 : len(ifMatch)-1])
 		if err != nil || expectedVersion <= 0 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "If-Match must contain a positive integer version",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "If-Match must contain a positive integer version")
 			return
 		}
 
@@ -257,46 +164,25 @@ func DeleteInventoryHandler(db *sql.DB) http.HandlerFunc {
 		_, err = database.GetInventoryItemByID(db, id)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusNotFound)
-
-				json.NewEncoder(w).Encode(map[string]any{
-					"error": map[string]string{
-						"code":    "not_found",
-						"message": "inventory item not found",
-					},
-				})
+				writeAPIError(w, http.StatusNotFound, "not_found", "inventory item not found")
 				return
 			}
 
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "internal_error",
-					"message": "failed to retrieve inventory item",
-				},
-			})
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "failed to retrieve inventory item")
 			return
 		}
 
 		deletedAt := time.Now().Format(time.RFC3339)
 
 		if err := database.DeleteInventoryItem(db, id, expectedVersion, deletedAt); err != nil {
-			w.Header().Set("Content-Type", "application/json")
 			if errors.Is(err, database.ErrVersionConflict) {
-				w.WriteHeader(http.StatusConflict)
-			} else {
-				w.WriteHeader(http.StatusInternalServerError)
+				writeAPIError(w, http.StatusConflict, "version_conflict", "inventory item has changed")
+				return
 			}
 
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "version_conflict",
-					"message": "inventory item has changed",
-				},
-			})
+			// A database failure is not a stale-client conflict. Returning the
+			// correct code lets clients decide whether to refresh or retry later.
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "failed to delete inventory item")
 			return
 		}
 
@@ -319,40 +205,19 @@ func AddInventoryHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request AddInventoryRequest
 
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "failed to parse request body",
-				},
-			})
+		if err := decodeJSONBody(w, r, &request); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "failed to parse request body")
 			return
 		}
 
 		// Validate required fields.
 		if !request.Name.Present || request.Name.Value == nil || strings.TrimSpace(*request.Name.Value) == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "name is required",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "name is required")
 			return
 		}
 
 		if !request.Quantity.Present || request.Quantity.Value == nil || *request.Quantity.Value <= 0 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "quantity must be greater than zero",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "quantity must be greater than zero")
 			return
 		}
 
@@ -380,19 +245,10 @@ func AddInventoryHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err := database.AddInventoryItem(db, item); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "internal_error",
-					"message": "failed to add inventory item",
-				},
-			})
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "failed to add inventory item")
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(item)
+		writeJSON(w, http.StatusCreated, item)
 	}
 }

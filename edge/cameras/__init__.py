@@ -1,1 +1,1 @@
-"""Camera capture implementations used by the edge-device pipeline."""
+"""Camera interfaces and capture implementations for the edge device."""

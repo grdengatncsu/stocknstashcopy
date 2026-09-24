@@ -21,3 +21,13 @@ mock_captures/
 
 # Generated runtime logs
 *.log
+
+# Local backend databases
+server/*.db
+
+# PWA dependencies, builds, and local configuration
+app/node_modules/
+app/dist/
+app/.env
+app/.env.*
+!app/.env.example

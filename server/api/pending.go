@@ -2,7 +2,6 @@ package api
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"github.com/jae-white/stock-n-stash/server/models"
 )
 
+// PendingListResponse wraps unresolved results with a cursor representing the
+// newest result returned by this request.
 type PendingListResponse struct {
 	Items      []models.PendingResult `json:"items"`
 	SyncCursor string                 `json:"sync_cursor"`
@@ -24,21 +25,14 @@ func GetPendingHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pendingResults, err := database.GetPendingResults(db)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "internal_error",
-					"message": "failed to retrieve pending results",
-				},
-			})
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "failed to retrieve pending results")
 			return
 		}
 
 		syncCursor := ""
 		var latestTime time.Time
 
+		// Find the newest valid creation time for the response cursor.
 		for _, item := range pendingResults {
 			itemTime, err := time.Parse(time.RFC3339, item.CreatedAt)
 			if err != nil {
@@ -50,8 +44,7 @@ func GetPendingHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(PendingListResponse{
+		writeJSON(w, http.StatusOK, PendingListResponse{
 			Items:      pendingResults,
 			SyncCursor: syncCursor,
 		})
@@ -75,89 +68,40 @@ func ResolvePendingHandler(db *sql.DB) http.HandlerFunc {
 		pendingID := r.PathValue("id")
 
 		var req ResolvePendingRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "failed to parse request body",
-				},
-			})
+		if err := decodeJSONBody(w, r, &req); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "failed to parse request body")
 			return
 		}
 
 		// Validate required fields.
 		if req.Name.Present && (req.Name.Value == nil || strings.TrimSpace(*req.Name.Value) == "") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "name is required",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "name is required")
 			return
 		}
 
 		if req.Quantity.Present && (req.Quantity.Value == nil || *req.Quantity.Value <= 0) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "quantity must be greater than zero",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "quantity must be greater than zero")
 			return
 		}
 
 		if !req.ExpectedVersion.Present || req.ExpectedVersion.Value == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "expected_version is required",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "expected_version is required")
 			return
 		}
 
 		if *req.ExpectedVersion.Value <= 0 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "invalid_request",
-					"message": "expected_version must be greater than zero",
-				},
-			})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "expected_version must be greater than zero")
 			return
 		}
 
 		pendingResult, err := database.GetPendingResultByID(db, pendingID)
 		if errors.Is(err, sql.ErrNoRows) {
 			// A missing review ID is a client-visible 404, not a server failure.
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "not_found",
-					"message": "pending result not found",
-				},
-			})
+			writeAPIError(w, http.StatusNotFound, "not_found", "pending result not found")
 			return
 		} else if err != nil {
 			// Other database failures are internal errors.
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "internal_error",
-					"message": "failed to retrieve pending result",
-				},
-			})
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "failed to retrieve pending result")
 			return
 		}
 
@@ -200,30 +144,15 @@ func ResolvePendingHandler(db *sql.DB) http.HandlerFunc {
 		// item cannot disappear or exist in both queues after a partial failure.
 		err = database.ResolvePendingResult(db, pendingID, *req.ExpectedVersion.Value, inventoryItem)
 		if err != nil {
-			if err == database.ErrVersionConflict {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusConflict)
-				json.NewEncoder(w).Encode(map[string]any{
-					"error": map[string]string{
-						"code":    "version_conflict",
-						"message": "pending result has changed",
-					},
-				})
+			if errors.Is(err, database.ErrVersionConflict) {
+				writeAPIError(w, http.StatusConflict, "version_conflict", "pending result has changed")
 				return
 			}
 
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]string{
-					"code":    "internal_error",
-					"message": "failed to resolve pending result",
-				},
-			})
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "failed to resolve pending result")
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(inventoryItem)
+		writeJSON(w, http.StatusOK, inventoryItem)
 	}
 }

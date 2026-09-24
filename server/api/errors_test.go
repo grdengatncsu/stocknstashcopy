@@ -181,3 +181,47 @@ func TestSubmitScanHandlerMalformedJSONError(t *testing.T) {
 		"failed to parse scan report",
 	)
 }
+
+func TestAddInventoryHandlerRejectsUnknownField(t *testing.T) {
+	db := setupPendingAPITestDB(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/inventory", AddInventoryHandler(db))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/inventory",
+		bytes.NewBufferString(`{"name":"Milk","quantity":1,"quanity":2}`),
+	)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	assertAPIError(
+		t,
+		rec,
+		http.StatusBadRequest,
+		"invalid_request",
+		"failed to parse request body",
+	)
+}
+
+func TestAddInventoryHandlerRejectsSecondJSONValue(t *testing.T) {
+	db := setupPendingAPITestDB(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/inventory", AddInventoryHandler(db))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/inventory",
+		bytes.NewBufferString(`{"name":"Milk","quantity":1} {}`),
+	)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	assertAPIError(
+		t,
+		rec,
+		http.StatusBadRequest,
+		"invalid_request",
+		"failed to parse request body",
+	)
+}

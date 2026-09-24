@@ -8,6 +8,7 @@ from unittest.mock import Mock
 from edge.association.associator import AssociationReport
 from edge.association.position_associator import PositionAssociator
 from edge.cameras.three_camera_capture import ThreeCameraCapture
+from edge.errors import ReportingError
 from edge.recognition.mock_recognizer import MockRecognizer
 from edge.recognition.recognizer import RecognizedItem, RecognitionReport
 from edge.reporting.mock_reporter import MockReporter
@@ -377,7 +378,7 @@ class TestScanController(unittest.TestCase):
         )
 
         self.reporter.report = Mock(
-            side_effect=OSError("network unavailable")
+            side_effect=ReportingError("API rejected the report")
         )
 
         self.controller.process_current_state()

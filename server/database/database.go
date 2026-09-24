@@ -16,9 +16,28 @@ func Open(path string) (*sql.DB, error) {
 		return nil, err
 	}
 
+	// The Pi service has one low-volume write path. A single connection avoids
+	// SQLite lock contention and also guarantees that connection-local PRAGMAs
+	// below apply to every query made by this process.
+	db.SetMaxOpenConns(1)
+
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return nil, err
+	}
+
+	pragmas := []string{
+		"PRAGMA busy_timeout = 5000",
+		"PRAGMA foreign_keys = ON",
+		// WAL lets readers continue while the service commits a scan. SQLite
+		// automatically keeps in-memory databases in their supported mode.
+		"PRAGMA journal_mode = WAL",
+	}
+	for _, pragma := range pragmas {
+		if _, err := db.Exec(pragma); err != nil {
+			db.Close()
+			return nil, err
+		}
 	}
 
 	return db, nil

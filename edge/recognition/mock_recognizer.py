@@ -1,4 +1,4 @@
-"""Deterministic recognizer used when an ML model is unavailable or unnecessary."""
+"""Deterministic recognition for tests and hardware-independent demos."""
 
 from pathlib import Path
 
@@ -6,10 +6,14 @@ from edge.recognition.recognizer import RecognitionReport, RecognizedItem
 
 
 class MockRecognizer:
-    """Return configured predictions instead of running an ML model."""
+    """Return configured predictions instead of running an ML model.
+
+    HARDWARE TODO: Use the deployed Hailo-backed recognizer in production.
+    Keep this class for repeatable automated tests.
+    """
 
     def __init__(self, predictions: dict[str, tuple[str, float]]):
-        """Store ``camera_id: (item name, confidence)`` test predictions."""
+        """Store ``camera_id: (item name, confidence)`` predictions."""
         self.predictions = predictions
 
     def recognize(self, scan_id: str, captured_images: dict[str, Path]) -> RecognitionReport:
@@ -26,8 +30,8 @@ class MockRecognizer:
                     f"Captured image for camera {camera_id} does not exist at {image_path}"
                 )
 
-            # Missing test data becomes an explicit unknown result instead of
-            # silently omitting a camera from the report.
+            # Missing fixture data becomes an explicit unknown observation
+            # rather than silently removing a camera from the report.
             name, confidence = self.predictions.get(camera_id, ("unknown", 0.0))
             recognized_items.append(
                 RecognizedItem(

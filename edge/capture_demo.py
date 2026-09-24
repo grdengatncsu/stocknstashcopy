@@ -1,13 +1,12 @@
-"""Demonstrate mock three-camera capture and state-machine integration."""
+"""Demonstrate three-camera capture without connected camera hardware."""
 
 from edge.cameras.mock_camera import MockCamera
 from edge.cameras.three_camera_capture import ThreeCameraCapture
 from edge.state_machine import StateMachine
 
 
-def main():
-    """Move to CAPTURE, copy three fixture images, and print the result."""
-    # These two simulated sensor events move a fresh machine into CAPTURE.
+def main() -> None:
+    """Move to CAPTURE, copy three fixtures, and print the saved paths."""
     machine = StateMachine()
     machine.handle_weight_detected()
     machine.handle_stabilizing(
@@ -18,18 +17,21 @@ def main():
     print(f"FSM before capture: {machine.state.name}")
     print(f"Scan ID: {machine.scan_id}")
 
-    # Each mock camera stands in for one permanently mounted physical camera.
+    # HARDWARE TODO: Replace these MockCamera objects with physical camera
+    # adapters configured using the verified MIPI identifiers and USB video
+    # device. The logical names must stay stable even if Linux device numbers
+    # change after a reboot.
     cameras = [
         MockCamera(
-            "camera_1",
+            "overhead",
             "mock_camera_inputs/camera_1.jpg",
         ),
         MockCamera(
-            "camera_2",
+            "rear_left",
             "mock_camera_inputs/camera_2.jpg",
         ),
         MockCamera(
-            "camera_3",
+            "front_right",
             "mock_camera_inputs/camera_3.jpg",
         ),
     ]
@@ -49,7 +51,6 @@ def main():
         print(f"Error source: {machine.error_source.name}")
         return
 
-    # The state machine should advance only when every expected view exists.
     capture_complete = len(captured_images) == 3
     machine.handle_capture(
         capture_complete=capture_complete

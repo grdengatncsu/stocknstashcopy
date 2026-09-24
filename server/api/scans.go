@@ -2,7 +2,6 @@ package api
 
 import (
 	"database/sql"
-	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -18,59 +17,47 @@ func SubmitScanHandler(db *sql.DB) http.HandlerFunc {
 	// the standard http.HandlerFunc signature expected by ServeMux.
 	return func(w http.ResponseWriter, r *http.Request) {
 		var report models.ScanReport
-		if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-
-			json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "invalid_request", "message": "failed to parse scan report"}})
+		if err := decodeJSONBody(w, r, &report); err != nil {
+			writeAPIError(
+				w,
+				http.StatusBadRequest,
+				"invalid_request",
+				"failed to parse scan report",
+			)
 			return
 		}
 
 		// Validate required fields.
 
 		if strings.TrimSpace(report.ScanID) == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "invalid_request", "message": "scan_id is required"}})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "scan_id is required")
 			return
 		}
 		seenAssociationIDs := make(map[string]struct{})
 		if report.Items == nil || len(report.Items) == 0 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "invalid_request", "message": "items are required"}})
+			writeAPIError(w, http.StatusBadRequest, "invalid_request", "items are required")
 			return
 		}
 
 		for _, item := range report.Items {
 			if strings.TrimSpace(item.AssociationID) == "" {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "invalid_request", "message": "association_id cannot be blank"}})
+				writeAPIError(w, http.StatusBadRequest, "invalid_request", "association_id cannot be blank")
 				return
 			}
 			if strings.TrimSpace(item.Name) == "" {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "invalid_request", "message": "name cannot be blank"}})
+				writeAPIError(w, http.StatusBadRequest, "invalid_request", "name cannot be blank")
 				return
 			}
 			if item.Confidence < 0 || item.Confidence > 1 {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "invalid_request", "message": "confidence must be between 0 and 1"}})
+				writeAPIError(w, http.StatusBadRequest, "invalid_request", "confidence must be between 0 and 1")
 				return
 			}
 			if item.Quantity <= 0 {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "invalid_request", "message": "item quantity must be greater than zero"}})
+				writeAPIError(w, http.StatusBadRequest, "invalid_request", "item quantity must be greater than zero")
 				return
 			}
 			if _, exists := seenAssociationIDs[item.AssociationID]; exists {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "invalid_request", "message": "item association_id must be unique"}})
+				writeAPIError(w, http.StatusBadRequest, "invalid_request", "item association_id must be unique")
 				return
 			}
 			seenAssociationIDs[item.AssociationID] = struct{}{}
@@ -84,9 +71,7 @@ func SubmitScanHandler(db *sql.DB) http.HandlerFunc {
 			time.Now().Format(time.RFC3339),
 		)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "internal_error", "message": "failed to process scan report"}})
+			writeAPIError(w, http.StatusInternalServerError, "internal_error", "failed to process scan report")
 			return
 		}
 
@@ -107,7 +92,6 @@ func SubmitScanHandler(db *sql.DB) http.HandlerFunc {
 			Status: status,
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		writeJSON(w, http.StatusOK, response)
 	}
 }

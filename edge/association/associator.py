@@ -1,9 +1,10 @@
-"""Shared types for consolidating observations from multiple cameras."""
+"""Shared records for consolidating observations from multiple cameras."""
 
 from dataclasses import dataclass
 from typing import Protocol
 
 from edge.recognition.recognizer import RecognitionReport, RecognizedItem
+
 
 @dataclass
 class AssociatedItem:
@@ -13,8 +14,9 @@ class AssociatedItem:
     name: str
     confidence: float
     observations: list[RecognizedItem]
-    # Position is the average normalized (x, y) location of valid observations.
+    # Average normalized (x, y) position of all valid observations.
     platform_position: tuple[float, float] | None = None
+
 
 @dataclass
 class AssociationReport:
@@ -23,9 +25,10 @@ class AssociationReport:
     scan_id: str
     items: list[AssociatedItem]
 
+
 class Associator(Protocol):
     """Contract for grouping camera observations into physical items."""
 
     def associate(self, recognition_report: RecognitionReport) -> AssociationReport:
-        """Consolidate a recognition report into unique physical items."""
+        """Consolidate camera observations into unique physical items."""
         ...

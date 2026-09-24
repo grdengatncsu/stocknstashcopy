@@ -63,6 +63,11 @@ class TestYoloRecognizer(unittest.TestCase):
             "models/yolov8n.pt"
         )
 
+    def test_missing_ultralytics_has_actionable_error(self):
+        with patch("edge.recognition.yolo_recognizer.YOLO", None):
+            with self.assertRaisesRegex(RuntimeError, "requirements.txt"):
+                YoloRecognizer("models/yolov8n.pt")
+
     def test_invalid_confidence_threshold_raises_value_error(self):
         for threshold in (-0.01, 1.01):
             with self.subTest(threshold=threshold):

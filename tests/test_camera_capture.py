@@ -49,6 +49,33 @@ class TestCameraCapture(unittest.TestCase):
         with self.assertRaises(ValueError):
             ThreeCameraCapture([])
 
+    def test_camera_ids_must_be_unique(self):
+        cameras = [
+            self.make_camera("overhead"),
+            self.make_camera("oblique"),
+            self.make_camera("oblique"),
+        ]
+
+        with self.assertRaisesRegex(ValueError, "unique"):
+            ThreeCameraCapture(cameras)
+
+    def test_configured_logical_ids_are_checked(self):
+        cameras = [
+            self.make_camera("overhead"),
+            self.make_camera("oblique_csi0"),
+            self.make_camera("oblique_csi1"),
+        ]
+
+        with self.assertRaisesRegex(ValueError, "configured logical"):
+            ThreeCameraCapture(
+                cameras,
+                expected_camera_ids={
+                    "overhead",
+                    "rear_left",
+                    "front_right",
+                },
+            )
+
     def test_all_three_cameras_capture(self):
         cameras = [
             self.make_camera("camera_1"),

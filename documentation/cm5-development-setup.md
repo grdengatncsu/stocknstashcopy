@@ -71,7 +71,8 @@ Start the backend from the `server` directory:
 go run .
 ```
 
-The server listens on port `8080`. From the CM5 itself, its status endpoint is:
+The server listens on port `8080` by default. From the CM5 itself, its status
+endpoint is:
 
 ```text
 http://localhost:8080/api/status
@@ -82,6 +83,15 @@ starting the backend from `server/` creates or opens:
 
 ```text
 /home/stocknstash/Projects/stock-n-stash/server/stocknstash.db
+```
+
+Deployment-specific values belong in environment configuration rather than
+source code. For example:
+
+```bash
+STOCKNSTASH_ADDR=127.0.0.1:8080 \
+STOCKNSTASH_DB_PATH=/var/lib/stock-n-stash/inventory.db \
+go run .
 ```
 
 The schema is initialized automatically. The current server has no
@@ -136,4 +146,6 @@ The expected body is:
 {"status":"ok"}
 ```
 
-Physical camera configuration, load-cell calibration, and final port assignments are handled separately during hardware bring-up.
+Physical camera configuration, load-cell calibration, and final port assignments
+are handled during hardware bring-up. Record every verified value and remaining
+gap in [`hardware-integration-checklist.md`](hardware-integration-checklist.md).
