@@ -82,11 +82,10 @@ class TestCameraCapture(unittest.TestCase):
             self.make_camera("camera_2"),
             self.make_camera("camera_3"),
         ]
-        capture = ThreeCameraCapture(cameras)
+        capture = ThreeCameraCapture(cameras, output_root=self.root / "captures")
 
         results = capture.capture_all(
             scan_id="test_scan",
-            output_root=str(self.root / "captures"),
         )
 
         self.assertEqual(
@@ -103,7 +102,7 @@ class TestCameraCapture(unittest.TestCase):
             self.make_camera("camera_2"),
             self.make_camera("camera_3"),
         ]
-        capture = ThreeCameraCapture(cameras)
+        capture = ThreeCameraCapture(cameras, output_root=self.root / "captures")
 
         machine = StateMachine()
         machine.handle_weight_detected()
@@ -116,7 +115,6 @@ class TestCameraCapture(unittest.TestCase):
 
         captured_images = capture.capture_all(
             scan_id=machine.scan_id,
-            output_root=str(self.root / "captures"),
         )
 
         machine.handle_capture(
@@ -142,7 +140,7 @@ class TestCameraCapture(unittest.TestCase):
                 self.root / "missing_camera.jpg",
             ),
         ]
-        capture = ThreeCameraCapture(cameras)
+        capture = ThreeCameraCapture(cameras, output_root=self.root / "captures")
 
         machine = StateMachine()
         machine.handle_weight_detected()
@@ -154,7 +152,6 @@ class TestCameraCapture(unittest.TestCase):
         try:
             capture.capture_all(
                 scan_id=machine.scan_id,
-                output_root=str(self.root / "captures"),
             )
         except (FileNotFoundError, OSError):
             machine.handle_error()

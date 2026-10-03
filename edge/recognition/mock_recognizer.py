@@ -12,7 +12,7 @@ class MockRecognizer:
     Keep this class for repeatable automated tests.
     """
 
-    def __init__(self, predictions: dict[str, tuple[str, float]]):
+    def __init__(self, predictions: dict[str, tuple[str, float] | tuple[str, float, tuple[float, float]]]):
         """Store ``camera_id: (item name, confidence)`` predictions."""
         self.predictions = predictions
 
@@ -32,13 +32,21 @@ class MockRecognizer:
 
             # Missing fixture data becomes an explicit unknown observation
             # rather than silently removing a camera from the report.
-            name, confidence = self.predictions.get(camera_id, ("unknown", 0.0))
+
+            prediction = self.predictions.get(camera_id, ("unknown", 0.0))
+            if len(prediction) == 2:
+                name, confidence = prediction
+                platform_position = None
+            else:
+                name, confidence, platform_position = prediction
+
             recognized_items.append(
                 RecognizedItem(
                     name=name,
                     confidence=confidence,
                     source_camera=camera_id,
                     unknown=name == "unknown",
+                    platform_position=platform_position,
                 )
             )
 

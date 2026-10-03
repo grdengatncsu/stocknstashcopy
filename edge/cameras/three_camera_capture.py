@@ -13,6 +13,7 @@ class ThreeCameraCapture:
         self,
         cameras: list[Camera],
         expected_camera_ids: Collection[str] | None = None,
+        output_root: str | Path = "mock_captures"
     ):
         """Require three uniquely named cameras and, optionally, exact IDs.
 
@@ -37,11 +38,11 @@ class ThreeCameraCapture:
                     "Camera IDs do not match the configured logical camera set"
                 )
         self.cameras = cameras
+        self.output_root = Path(output_root)
 
     def capture_all(
         self,
         scan_id: str,
-        output_root: str = "mock_captures",
     ) -> dict[str, Path]:
         """Save all views under one scan ID and return paths by camera ID.
 
@@ -51,7 +52,7 @@ class ThreeCameraCapture:
         """
         # A separate folder keeps images from different items from being mixed
         # together or overwritten.
-        scan_directory = f"{output_root}/{scan_id}"
+        scan_directory = self.output_root / scan_id
         captured_images: dict[str, Path] = {}
 
         for camera in self.cameras:
