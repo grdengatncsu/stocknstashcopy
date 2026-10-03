@@ -1,12 +1,14 @@
 import json
 import threading
 import unittest
+import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from edge.association.associator import AssociatedItem, AssociationReport
 from edge.errors import ReportingError
 from edge.recognition.recognizer import RecognizedItem
 from edge.reporting.http_reporter import HttpReporter
+
 
 
 class RecordingHandler(BaseHTTPRequestHandler):

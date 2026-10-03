@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -10,6 +11,7 @@ from urllib.request import Request, urlopen
 from edge.association.associator import AssociatedItem, AssociationReport
 from edge.errors import ReportingError
 
+logger = logging.getLogger(__name__)
 
 class HttpReporter:
     """Send association reports to the local Go API.
@@ -102,12 +104,17 @@ class HttpReporter:
         except HTTPError as error:
             status_code = error.code
             error.close()
+
             if 500 <= status_code <= 599:
+                logger.warning(
+                    "Pi API returned HTTP %s for scan report %s; retrying...", status_code, association_report.scan_id
+                )
                 return False
             raise ReportingError(
                 f"Pi API rejected scan report with HTTP {status_code}"
             ) from error
-        except (URLError, TimeoutError):
+        except (URLError, TimeoutError) as error:
+            logger.warning("Pi API unreachable for scan report %s (%s); retrying...", association_report.scan_id, type(error).__name__,)
             return False
 
         try:

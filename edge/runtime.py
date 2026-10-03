@@ -1,4 +1,5 @@
-import logging
+import logging, signal
+from threading import Event
 from edge.association.position_associator import PositionAssociator
 from edge.cameras.mock_camera import MockCamera
 from edge.cameras.three_camera_capture import ThreeCameraCapture
@@ -8,7 +9,7 @@ from edge.scan_controller import ScanController
 from edge.state_machine import State, StateMachine
 from edge.presence import PresenceSource, SimulatedPresenceSource
 
-from edge.runtime_config import RuntimeConfig, development_config
+from edge.runtime_config import RuntimeConfig, load_runtime_config
 
 logger = logging.getLogger(__name__)
 
@@ -85,13 +86,53 @@ def run_simulated_scan(
             return
     raise RuntimeError(f"Simulated scan did not complete within {max_steps} runtime steps.")
 
+def run_forever(controller: ScanController, presence_source: PresenceSource, stop_event: Event, poll_interval_seconds: float) -> None:
+    logger.info("Edge runtime started.")
+
+    while not stop_event.is_set():
+        previous_state = controller.state_machine.state
+        previous_scan_id = controller.state_machine.scan_id
+
+        process_runtime_step(controller = controller, presence_source = presence_source,)
+
+        current_state = controller.state_machine.state
+        current_scan_id = controller.state_machine.scan_id
+
+        if current_state != previous_state:
+            logger.info(
+                "state = %s -> %s scan_id = %s" , 
+                previous_state.name,
+                current_state.name,
+                current_scan_id or previous_scan_id,
+            )
+        stop_event.wait(poll_interval_seconds)
+
+    logger.info("Edge runtime stopped.")
+
+def install_signal_handlers(stop_event: Event) -> None:
+    def request_shutdown(signum, _frame):
+        signal_name = signal.Signals(signum).name
+
+        logger.info(
+            "Received %s; requesting shutdown.",
+            signal_name,
+        )
+
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, request_shutdown)
+    signal.signal(signal.SIGTERM, request_shutdown)
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    config = development_config()
-    controller = build_development_controller(config=config)
+    config = load_runtime_config()
+    controller = build_development_controller(config)
     presence_source = SimulatedPresenceSource()
 
-    run_simulated_scan(controller=controller, presence_source=presence_source)
+    stop_event = Event()
+    install_signal_handlers(stop_event)
+
+    run_forever(controller=controller, presence_source=presence_source, stop_event=stop_event, poll_interval_seconds=config.poll_interval_seconds,)
 
 if __name__ == "__main__":
     main()
