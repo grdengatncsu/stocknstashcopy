@@ -10,25 +10,23 @@ SAVE_FOLDER = "scans"
 DATA_FILE = "local_history.json"
 os.makedirs(SAVE_FOLDER, exist_ok=True)
 
-# Create JSON database file if it doesn't exist
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w") as f:
         json.dump([], f)
 
-# Load lightweight YOLO model (downloads automatically on first run)
+# Load lightweight YOLO model
 model = YOLO("yolov8n.pt") 
-cap = cv2.VideoCapture(0)
-
 CONFIDENCE_THRESHOLD = 0.60
+
+# Single camera setup (index 0)
+cap = cv2.VideoCapture(0)
 
 def save_scan_locally(detected_items, frame):
     timestamp = int(time.time())
-    
-    # 1. Save frame as image file
     image_filename = os.path.join(SAVE_FOLDER, f"scan_{timestamp}.jpg")
+    
     cv2.imwrite(image_filename, frame)
     
-    # 2. Record scan metadata
     scan_record = {
         "id": timestamp,
         "date_time": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -37,7 +35,6 @@ def save_scan_locally(detected_items, frame):
         "image_path": image_filename
     }
 
-    # 3. Append to local JSON dataset
     with open(DATA_FILE, "r") as f:
         history = json.load(f)
 
@@ -48,11 +45,12 @@ def save_scan_locally(detected_items, frame):
 
     print(f"\n[SAVED] {len(detected_items)} item(s) -> {image_filename}\n")
 
-print("Scanner active! Press 's' to save scan locally, or 'q' to quit.")
+print("Single-Camera Scanner Active! Press 's' to save scan, 'q' to quit.")
 
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
+        print("[ERROR] Failed to grab frame from camera.")
         break
 
     results = model(frame, verbose=False)[0]
